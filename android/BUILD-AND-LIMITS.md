@@ -1,5 +1,7 @@
 # Yomu V1 build and operating notes
 
+Current private build: **1.0.0-alpha14**. This build fixes Play now's foreground-service startup timeout by starting from the visible app UI as a regular service; Media3 promotes its media service when synthesized playback begins. The alpha14 APK has passed local JVM unit tests and build/package checks, but is not installed on the Galaxy yet.
+
 ## Build
 
 From this directory on Windows, build the installable arm64 debug APK:

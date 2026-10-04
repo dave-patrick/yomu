@@ -246,7 +246,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 .setAction(YomuPlaybackService.ACTION_PLAY_ITEM)
                 .putExtra(YomuPlaybackService.EXTRA_ITEM_ID, itemId)
                 .putExtra(YomuPlaybackService.EXTRA_SENTENCE, resumeSentence)
-            getApplication<Application>().startForegroundService(intent)
+            // This action comes from the visible app UI. Let Media3 promote its
+            // MediaLibraryService when the first synthesized audio is ready;
+            // startForegroundService() would start Android's deadline before
+            // item loading and sentence synthesis have completed.
+            getApplication<Application>().startService(intent)
         }
     }
     fun openReader(itemId: String) {
