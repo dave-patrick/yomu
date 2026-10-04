@@ -1,0 +1,44 @@
+plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
+android {
+    namespace 'dev.yomu.spike'
+    compileSdk 36
+    ndkVersion '28.2.13676358'
+    defaultConfig {
+        applicationId 'dev.yomu.spike'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '0.1-spike'
+        ndk { abiFilters 'arm64-v8a' }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    kotlinOptions { jvmTarget = '17' }
+    packaging {
+        resources {
+            excludes += ['META-INF/INDEX.LIST']
+            merges += ['META-INF/LICENSE', 'META-INF/NOTICE', 'META-INF/LICENSE.txt', 'META-INF/NOTICE.txt', 'META-INF/io.netty.versions.properties']
+        }
+    }
+    externalNativeBuild {
+        cmake { path file('src/main/cpp/CMakeLists.txt'); version '3.31.0' }
+    }
+    buildFeatures { prefab false }
+}
+dependencies {
+    implementation 'androidx.media3:media3-exoplayer:1.6.1'
+    implementation 'androidx.media3:media3-session:1.6.1'
+    implementation 'net.dankito.readability4j:readability4j:1.0.8'
+    implementation 'com.microsoft.cognitiveservices.speech:client-sdk:1.51.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'cz.adaptech.tesseract4android:tesseract4android:4.9.0'
+}
+tasks.register('writeSpikeBom') {
+    doLast {
+        def artifacts = configurations.debugRuntimeClasspath.resolvedConfiguration.resolvedArtifacts.collect { a ->
+            [group:a.moduleVersion.id.group, name:a.moduleVersion.id.name, version:a.moduleVersion.id.version,
+             file:a.file.absolutePath, sha256:java.security.MessageDigest.getInstance('SHA-256').digest(a.file.bytes).encodeHex().toString()]
+        }
+        def output = rootProject.file('../results/gradle-artifacts.json')
+        output.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(artifacts))
+    }
+}

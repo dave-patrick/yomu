@@ -1,0 +1,10 @@
+Yomu bundles the following Google Fonts under the SIL Open Font License 1.1 (OFL):
+
+Atkinson Hyperlegible — https://fonts.google.com/specimen/Atkinson+Hyperlegible
+Lexend — https://fonts.google.com/specimen/Lexend
+Literata — https://fonts.google.com/specimen/Literata
+Lora — https://fonts.google.com/specimen/Lora
+Source Sans 3 — https://fonts.google.com/specimen/Source+Sans+3
+Source Serif 4 — https://fonts.google.com/specimen/Source+Serif+4
+
+The applicable copyright notices and complete OFL 1.1 text are included in the adjacent family-specific *-OFL.txt files. Font files are unmodified and bundled as application resources.
