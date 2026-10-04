@@ -828,7 +828,11 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                 else -> null
             }
             Row(Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp))
-                .background(if (destructive) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer)
+                .background(when {
+                    action.isBlank() || action == "Off" -> Color.Transparent
+                    destructive -> MaterialTheme.colorScheme.errorContainer
+                    else -> MaterialTheme.colorScheme.primaryContainer
+                })
                 .padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = if (swipeState.dismissDirection == SwipeToDismissBoxValue.EndToStart) Arrangement.End else Arrangement.Start) {
                 if (action.isNotBlank() && action != "Off") {
