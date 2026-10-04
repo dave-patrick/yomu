@@ -874,7 +874,7 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "More actions for ${row.title}") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(20.dp),
-                        containerColor = frostedSurfaceColor(), tonalElevation = 10.dp,
+                        containerColor = menuSurfaceColor(), tonalElevation = 10.dp,
                         modifier = Modifier.frostedGlass(RoundedCornerShape(20.dp))) {
                         DropdownMenuItem(text = { Text("Play now") }, onClick = { menu = false; onPlayNow() })
                         if (readStateActionEnabled) DropdownMenuItem(text = { Text(if (row.completed) "Mark as unread" else "Mark as read") }, onClick = { menu = false; onMarkStateChange() })
@@ -1791,7 +1791,7 @@ private fun VoiceFilterDropdown(
             Icon(Icons.Default.ExpandMore, contentDescription = "Show $label options")
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, shape = RoundedCornerShape(20.dp),
-            containerColor = frostedSurfaceColor(), tonalElevation = 10.dp,
+            containerColor = menuSurfaceColor(), tonalElevation = 10.dp,
             modifier = Modifier.frostedGlass(RoundedCornerShape(20.dp))) {
             options.forEach { option ->
                 DropdownMenuItem(text = { Text(option) }, onClick = { onSelect(option); expanded = false })
@@ -1927,7 +1927,7 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
                             Icon(Icons.Default.Timer, "Sleep timer", modifier = Modifier.size(26.dp))
                         }
                         DropdownMenu(expanded = timerMenu, onDismissRequest = { timerMenu = false }, shape = RoundedCornerShape(20.dp),
-                            containerColor = frostedSurfaceColor(), tonalElevation = 10.dp,
+                            containerColor = menuSurfaceColor(), tonalElevation = 10.dp,
                             modifier = Modifier.frostedGlass(RoundedCornerShape(20.dp))) {
                             listOf(5, 10, 15, 30, 60).forEach { minutes ->
                                 DropdownMenuItem(text = { Text("Stop in $minutes minutes") }, onClick = { vm.setSleepTimer(minutes); timerMenu = false })
@@ -1973,6 +1973,9 @@ private fun frostedSurfaceColor(): Color = Color.White.copy(alpha = .18f)
     .compositeOver(MaterialTheme.colorScheme.surface.copy(alpha = .48f))
 
 @Composable
+private fun menuSurfaceColor(): Color = MaterialTheme.colorScheme.surfaceContainerHigh
+
+@Composable
 private fun frostedDialogContainerColor(): Color = MaterialTheme.colorScheme.surface.copy(alpha = .94f)
 
 private fun dev.yomu.app.speech.SpeechVoice.displayDescription(provider: String): String {
@@ -2004,7 +2007,7 @@ private fun MenuChoiceDropdown(label: String, selected: String, options: List<St
             Icon(Icons.Default.ExpandMore, contentDescription = "Show $label options")
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, shape = RoundedCornerShape(20.dp),
-            containerColor = frostedSurfaceColor(), tonalElevation = 10.dp,
+            containerColor = menuSurfaceColor(), tonalElevation = 10.dp,
             modifier = Modifier.frostedGlass(RoundedCornerShape(20.dp))) {
             options.forEach { option -> DropdownMenuItem(text = { Text(option) }, onClick = { onSelect(option); expanded = false }) }
         }
