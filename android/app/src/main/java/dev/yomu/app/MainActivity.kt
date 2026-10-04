@@ -1387,7 +1387,10 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                     OutlinedTextField(value = region, onValueChange = { region = it }, singleLine = true, label = { Text("Azure region") }, supportingText = { Text("Example: eastus") }, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = azureKey, onValueChange = { value ->
                         azureKey = value
-                    }, singleLine = true, visualTransformation = StarPasswordVisualTransformation, label = { Text("Speech API key") }, placeholder = { Text(if (azureKeySaved) "*****" else "Paste one key") }, supportingText = { Text("Use one Azure key only. Keep the second key separate; both are interchangeable.") }, modifier = Modifier.fillMaxWidth())
+                    }, singleLine = true, visualTransformation = StarPasswordVisualTransformation,
+                        label = if (azureKeySaved && azureKey.isEmpty()) null else ({ Text("Speech API key") }),
+                        placeholder = { Text(if (azureKeySaved && azureKey.isEmpty()) "*****" else "Paste one key") },
+                        supportingText = { Text("Use one Azure key only. Keep the second key separate; both are interchangeable.") }, modifier = Modifier.fillMaxWidth())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Button(enabled = (azureKey.isNotBlank() || azureKeySaved) && region.isNotBlank(), onClick = { saveAzure(azureKey, region); azureKey = "" }) { Text(if (azureKey.isNotBlank()) if (azureKeySaved) "Replace key" else "Save key" else "Save region") }
                         if (azureKeySaved) OutlinedButton(onClick = clearAzure, colors = ButtonDefaults.outlinedButtonColors(containerColor = frostedSurfaceColor())) { Text("Remove key") }
@@ -1445,8 +1448,8 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                         onValueChange = { elevenLabsKey = it },
                         singleLine = true,
                         visualTransformation = StarPasswordVisualTransformation,
-                        label = { Text("ElevenLabs API key") },
-                        placeholder = { Text(if (elevenLabsKeySaved) "*****" else "Paste your key") },
+                        label = if (elevenLabsKeySaved && elevenLabsKey.isEmpty()) null else ({ Text("ElevenLabs API key") }),
+                        placeholder = { Text(if (elevenLabsKeySaved && elevenLabsKey.isEmpty()) "*****" else "Paste your key") },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

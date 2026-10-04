@@ -31,6 +31,7 @@ import dev.yomu.app.speech.KokoroModelInstaller
 import dev.yomu.app.speech.SherpaKokoroEspeakProvider
 import dev.yomu.app.speech.SpeechSynthesisRequest
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -127,9 +128,6 @@ class YomuPlaybackService : MediaSessionService() {
                     if (separator <= 0 || mediaId.substring(0, separator) != itemId) return
                     val index = mediaId.substring(separator + 1).toIntOrNull() ?: return
                     if (index < 0 || index !in sentences.indices) return
-
-                    val previousItems = player.currentMediaItemIndex
-                    if (previousItems > 0) player.removeMediaItems(0, previousItems)
 
                     sentenceIndex = index
                     if (prefetchedSentenceIndex == index) {
@@ -310,34 +308,38 @@ class YomuPlaybackService : MediaSessionService() {
         }
         val generatedSentence = prefetchedSentence ?: return
         scope.launch {
-            val generated = runCatching { generatedSentence.await() }.getOrNull() ?: return@launch
-            val currentId = itemId ?: return@launch
-            fun canAppend(): Boolean = itemId == id && prefetchedSentenceIndex == index &&
-                player.playbackState != Player.STATE_ENDED &&
-                player.currentMediaItem?.mediaId == "$id:${index - 1}" &&
-                player.mediaItemCount == player.currentMediaItemIndex + 1
-            if (currentId != id || !canAppend()) return@launch
+            try {
+                val generated = generatedSentence.await()
+                val currentId = itemId ?: return@launch
+                fun canAppend(): Boolean = itemId == id && prefetchedSentenceIndex == index &&
+                    player.playbackState != Player.STATE_ENDED &&
+                    player.currentMediaItem?.mediaId == "$id:${index - 1}" &&
+                    player.mediaItemCount == player.currentMediaItemIndex + 1
+                if (currentId != id || !canAppend()) return@launch
 
-            // Put the synthesized sentence into ExoPlayer's queue while the current sentence
-            // is still playing. Media3 can then transition directly instead of rebuilding a
-            // decoder only after STATE_ENDED, which was creating an audible gap each sentence.
-            val offlineOnly = getSharedPreferences("speech_preferences", MODE_PRIVATE).getBoolean("offline_only", false)
-            val needsFailoverNotice = generated.offline && !offlineNoticePlayed && !offlineOnly
-            if (needsFailoverNotice) {
-                val notice = File(cacheDir, "speech/failover.wav")
-                withContext(Dispatchers.IO) {
-                    synthesizeOffline("Service unavailable. Continuing with the offline voice.", notice)
+                // Queue the finished sentence ahead of the current one for a direct Media3 transition.
+                val offlineOnly = getSharedPreferences("speech_preferences", MODE_PRIVATE).getBoolean("offline_only", false)
+                val needsFailoverNotice = generated.offline && !offlineNoticePlayed && !offlineOnly
+                if (needsFailoverNotice) {
+                    val notice = File(cacheDir, "speech/failover.wav")
+                    withContext(Dispatchers.IO) {
+                        synthesizeOffline("Service unavailable. Continuing with the offline voice.", notice)
+                    }
+                    if (!canAppend()) return@launch
+                    player.addMediaItems(listOf(
+                        mediaItem(notice, -1, "Offline voice"),
+                        mediaItem(generated.file, generated.index, title),
+                    ))
+                    offlineNoticePlayed = true
+                    localOnly = true
+                } else {
+                    player.addMediaItem(mediaItem(generated.file, generated.index, title))
+                    localOnly = generated.offline
                 }
-                if (!canAppend()) return@launch
-                offlineNoticePlayed = true
-                localOnly = true
-                player.addMediaItems(listOf(
-                    mediaItem(notice, -1, "Offline voice"),
-                    mediaItem(generated.file, generated.index, title),
-                ))
-            } else {
-                localOnly = generated.offline
-                player.addMediaItem(mediaItem(generated.file, generated.index, title))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // Keep the prepared sentence; the sentence-ended fallback will try it normally.
             }
         }
     }
