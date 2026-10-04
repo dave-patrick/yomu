@@ -66,6 +66,22 @@ class LibraryRepositoryTest {
         assertEquals(9, dao.getProgress("shared")?.sentenceIndex)
     }
 
+    @Test fun mediaLibraryQueriesExposeToReadUpNextAndPlaylistItemsInOrder() = runBlocking {
+        insert("first"); insert("second")
+        dao.setManualOrder("first", 2_048)
+        dao.setManualOrder("second", 1_024)
+        repository.addToUpNext("second")
+        repository.addToUpNext("first")
+        dao.upsertPlaylist(PlaylistEntity("later", "Read later", 1, 0))
+        repository.addToPlaylist("later", "first")
+        repository.addToPlaylist("later", "second")
+
+        assertEquals(listOf("first", "second"), dao.getToReadInManualOrder().map { it.id })
+        assertEquals(listOf("second", "first"), dao.getUpNextItems().map { it.id })
+        assertEquals(listOf("Read later"), dao.getPlaylists().map { it.name })
+        assertEquals(listOf("first", "second"), dao.getPlaylistItems("later").map { it.id })
+    }
+
     @Test fun completedItemsLeaveToReadAndCanBeRemovedFromHistory() = runBlocking {
         insert("done")
         repository.addToUpNext("done")

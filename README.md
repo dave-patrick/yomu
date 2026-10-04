@@ -23,6 +23,7 @@ Browse available voices, filter the list, choose a voice, and play a sample befo
 - Accepts shared public article URLs, PDFs (including scanned and mixed pages), Word documents, and plain text into **To read** without starting playback.
 - Organizes items across **To read**, **Up next**, custom playlists, and **Read history**. An item may appear in multiple playlists while sharing its reading position.
 - Reads aloud with sentence highlighting, tap-to-seek, adjustable speed, previous/next controls, sleep timer, elapsed/remaining time, and background media controls.
+- Supports Android Auto's driver-safe media browser for To read, Up next, and playlists, with spoken-item selection and sentence skip controls. Device/head-unit validation is pending; see [Build status and limits](android/BUILD-AND-LIMITS.md).
 - Uses user-configured online speech providers with a separately selected local Kokoro voice as an offline fallback. API keys are stored locally using Android Keystore-backed encryption. Yomu does not depend on Google or Samsung system TTS.
 - Exports an individual item as one MP3 with ID3 chapter marks for listening in compatible players such as Pocket Casts.
 - Keeps the library and settings on the phone, with manual backup and restore.
@@ -36,6 +37,8 @@ The production app is a native Kotlin application using Jetpack Compose and Mate
 The production project is in [`android/`](android/). The earlier feasibility and device-validation app remains in [`spike/`](spike/); its results are evidence about those focused prototypes, not automatic proof of equivalent production behavior.
 
 ## Build and install
+
+For a ready-to-install private sideload build, download the APK attached to a versioned [GitHub release](https://github.com/dave-patrick/yomu/releases). Each published app release includes its source tag and matching debug APK.
 
 Requirements: Windows with Android Studio or a compatible Java/Android SDK setup, Android SDK/NDK versions declared by the Gradle project, and an arm64 Android device for on-device use.
 

@@ -226,6 +226,15 @@ interface LibraryDao {
     @Query("SELECT * FROM reading_items WHERE inToRead = 1 ORDER BY manualOrder DESC, importedAt DESC")
     suspend fun getToReadInManualOrder(): List<ReadingItemEntity>
 
+    @Query("SELECT reading_items.* FROM reading_items INNER JOIN up_next ON reading_items.id = up_next.itemId ORDER BY up_next.position ASC")
+    suspend fun getUpNextItems(): List<ReadingItemEntity>
+
+    @Query("SELECT * FROM playlists ORDER BY sortOrder ASC, name COLLATE NOCASE ASC")
+    suspend fun getPlaylists(): List<PlaylistEntity>
+
+    @Query("SELECT reading_items.* FROM playlist_memberships INNER JOIN reading_items ON reading_items.id = playlist_memberships.itemId WHERE playlist_memberships.playlistId = :playlistId ORDER BY playlist_memberships.sortOrder ASC")
+    suspend fun getPlaylistItems(playlistId: String): List<ReadingItemEntity>
+
     @Query("UPDATE reading_items SET manualOrder = :order WHERE id = :itemId")
     suspend fun setManualOrder(itemId: String, order: Long)
 

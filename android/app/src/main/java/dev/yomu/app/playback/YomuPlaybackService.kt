@@ -15,7 +15,9 @@ import androidx.media3.common.Player
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
+import androidx.media3.session.LibraryResult
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
@@ -46,11 +48,11 @@ import java.text.BreakIterator
 import java.util.Locale
 
 /** Sentence-sized playback keeps the reader synchronized with speech and permits voice failover. */
-class YomuPlaybackService : MediaSessionService() {
+class YomuPlaybackService : MediaLibraryService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var player: ExoPlayer
-    private lateinit var session: MediaSession
+    private lateinit var session: MediaLibrarySession
     private val dao by lazy { (application as YomuApplication).database.libraryDao() }
     private val repository by lazy { LibraryRepository((application as YomuApplication).database) }
     private val vault by lazy { AzureCredentialVault(this) }
@@ -149,7 +151,7 @@ class YomuPlaybackService : MediaSessionService() {
                 }
             })
         }
-        session = MediaSession.Builder(this, player).setCallback(SessionCallbacks()).build()
+        session = MediaLibrarySession.Builder(this, player, SessionCallbacks()).build()
         val playbackPrefs = getSharedPreferences("yomu_playback", MODE_PRIVATE)
         playNowResume = PlayNowResumeState(
             playbackPrefs.getString("return_item_id", null)?.let {
@@ -165,7 +167,115 @@ class YomuPlaybackService : MediaSessionService() {
         restorePlaybackCheckpoint()
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
+
+    private fun isAllowedCarBrowser(controller: MediaSession.ControllerInfo): Boolean =
+        controller.isTrusted || controller.packageName == packageName ||
+            (controller.packageName == CAR_HOST_PACKAGE && controller.isPackageNameVerified)
+
+    private fun carFolder(id: String, label: String, folderType: Int = MediaMetadata.MEDIA_TYPE_FOLDER_MIXED) =
+        MediaItem.Builder().setMediaId(id).setMediaMetadata(
+            MediaMetadata.Builder().setTitle(label).setArtist("Yomu")
+                .setFolderType(folderType).setIsBrowsable(true).setIsPlayable(false).build(),
+        ).build()
+
+    private fun carReadingItem(item: dev.yomu.app.data.ReadingItemEntity) =
+        MediaItem.Builder().setMediaId("$CAR_ITEM_PREFIX${item.id}").setMediaMetadata(
+            MediaMetadata.Builder().setTitle(item.title).setArtist(item.sourceName ?: "Yomu")
+                .setDescription(item.sourceType.replaceFirstChar(Char::uppercase))
+                .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
+                .setDurationMs(item.estimatedSecondsAtOneX.coerceAtLeast(0) * 1_000L)
+                .setIsBrowsable(false).setIsPlayable(true).build(),
+        ).build()
+
+    private fun handleGetLibraryRoot(
+        session: MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        params: MediaLibraryService.LibraryParams?,
+    ): ListenableFuture<LibraryResult<MediaItem>> = Futures.immediateFuture(
+        if (!isAllowedCarBrowser(browser)) LibraryResult.ofError(LibraryResult.RESULT_ERROR_PERMISSION_DENIED, params)
+        else LibraryResult.ofItem(carFolder(CAR_ROOT_ID, "Yomu", MediaMetadata.MEDIA_TYPE_FOLDER_MIXED), params),
+    )
+
+    private fun handleGetChildren(
+        session: MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        parentId: String,
+        page: Int,
+        pageSize: Int,
+        params: MediaLibraryService.LibraryParams?,
+    ): ListenableFuture<LibraryResult<com.google.common.collect.ImmutableList<MediaItem>>> {
+        if (!isAllowedCarBrowser(browser)) {
+            return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_PERMISSION_DENIED, params))
+        }
+        val result = SettableFuture.create<LibraryResult<com.google.common.collect.ImmutableList<MediaItem>>>()
+        scope.launch {
+            try {
+                val children = withContext(Dispatchers.IO) {
+                    when (parentId) {
+                        CAR_ROOT_ID -> buildList {
+                            add(carFolder(CAR_TO_READ_ID, "To read"))
+                            add(carFolder(CAR_UP_NEXT_ID, "Up next"))
+                            add(carFolder(CAR_PLAYLISTS_ID, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS))
+                        }
+                        CAR_TO_READ_ID -> dao.getToReadInManualOrder().map(::carReadingItem)
+                        CAR_UP_NEXT_ID -> dao.getUpNextItems().map(::carReadingItem)
+                        CAR_PLAYLISTS_ID -> dao.getPlaylists().map { playlist ->
+                            carFolder("$CAR_PLAYLIST_PREFIX${playlist.id}", playlist.name, MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                        }
+                        else -> parentId.removePrefix(CAR_PLAYLIST_PREFIX).takeIf { parentId.startsWith(CAR_PLAYLIST_PREFIX) }
+                            ?.let { dao.getPlaylistItems(it).map(::carReadingItem) }.orEmpty()
+                    }
+                }
+                val start = (page.coerceAtLeast(0).toLong() * pageSize.coerceAtLeast(0)).coerceAtMost(children.size.toLong()).toInt()
+                val end = if (pageSize <= 0) children.size else (start + pageSize).coerceAtMost(children.size)
+                result.set(LibraryResult.ofItemList(children.subList(start, end), params))
+            } catch (_: Exception) {
+                result.set(LibraryResult.ofError(LibraryResult.RESULT_ERROR_IO, params))
+            }
+        }
+        return result
+    }
+
+    private fun handleGetItem(
+        session: MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        mediaId: String,
+    ): ListenableFuture<LibraryResult<MediaItem>> {
+        if (!isAllowedCarBrowser(browser)) {
+            return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_PERMISSION_DENIED))
+        }
+        if (mediaId == CAR_ROOT_ID) return Futures.immediateFuture(LibraryResult.ofItem(carFolder(CAR_ROOT_ID, "Yomu"), null))
+        if (mediaId in setOf(CAR_TO_READ_ID, CAR_UP_NEXT_ID, CAR_PLAYLISTS_ID)) {
+            val label = when (mediaId) { CAR_TO_READ_ID -> "To read"; CAR_UP_NEXT_ID -> "Up next"; else -> "Playlists" }
+            return Futures.immediateFuture(LibraryResult.ofItem(carFolder(mediaId, label), null))
+        }
+        if (mediaId.startsWith(CAR_PLAYLIST_PREFIX)) {
+            val result = SettableFuture.create<LibraryResult<MediaItem>>()
+            scope.launch {
+                try {
+                    val playlist = withContext(Dispatchers.IO) { dao.getPlaylist(mediaId.removePrefix(CAR_PLAYLIST_PREFIX)) }
+                    if (playlist == null) result.set(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
+                    else result.set(LibraryResult.ofItem(carFolder(mediaId, playlist.name), null))
+                } catch (_: Exception) {
+                    result.set(LibraryResult.ofError(LibraryResult.RESULT_ERROR_IO))
+                }
+            }
+            return result
+        }
+        if (!mediaId.startsWith(CAR_ITEM_PREFIX)) return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
+        val result = SettableFuture.create<LibraryResult<MediaItem>>()
+        scope.launch {
+            try {
+                val item = withContext(Dispatchers.IO) { dao.getItem(mediaId.removePrefix(CAR_ITEM_PREFIX)) }
+                if (item == null) result.set(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
+                else result.set(LibraryResult.ofItem(carReadingItem(item), null))
+            } catch (_: Exception) {
+                result.set(LibraryResult.ofError(LibraryResult.RESULT_ERROR_IO))
+            }
+        }
+        return result
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
@@ -510,7 +620,139 @@ class YomuPlaybackService : MediaSessionService() {
         kokoroProvider ?: SherpaKokoroEspeakProvider(installer.modelDirectory, 2).also { kokoroProvider = it }
     }
 
-    private inner class SessionCallbacks : MediaSession.Callback {
+    private inner class SessionCallbacks : MediaLibrarySession.Callback {
+        override fun onGetLibraryRoot(
+            mediaLibrarySession: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            params: MediaLibraryService.LibraryParams?,
+        ): ListenableFuture<LibraryResult<MediaItem>> = handleGetLibraryRoot(mediaLibrarySession, browser, params)
+
+        override fun onGetChildren(
+            mediaLibrarySession: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: MediaLibraryService.LibraryParams?,
+        ): ListenableFuture<LibraryResult<com.google.common.collect.ImmutableList<MediaItem>>> =
+            handleGetChildren(mediaLibrarySession, browser, parentId, page, pageSize, params)
+
+        override fun onGetItem(
+            mediaLibrarySession: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            mediaId: String,
+        ): ListenableFuture<LibraryResult<MediaItem>> = handleGetItem(mediaLibrarySession, browser, mediaId)
+
+        override fun onConnect(mediaSession: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
+            val nextCommand = SessionCommand(COMMAND_NEXT, Bundle.EMPTY)
+            val previousCommand = SessionCommand(COMMAND_PREVIOUS, Bundle.EMPTY)
+            val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                .add(nextCommand).add(previousCommand).build()
+            val playerCommands = mediaSession.player.availableCommands.buildUpon()
+                .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                .build()
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(mediaSession, controller)
+                .setAvailableSessionCommands(sessionCommands)
+                .setAvailablePlayerCommands(playerCommands)
+                .build()
+        }
+
+        override fun onPlayerCommandRequest(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            playerCommand: Int,
+        ): Int = when (playerCommand) {
+            Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
+                sentenceIndex = (sentenceIndex + 1).coerceAtMost(sentences.size)
+                player.stop()
+                generateAndPlayNext()
+                SessionResult.RESULT_SUCCESS
+            }
+            Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
+                sentenceIndex = (sentenceIndex - 1).coerceAtLeast(0)
+                player.stop()
+                generateAndPlayNext()
+                SessionResult.RESULT_SUCCESS
+            }
+            else -> super.onPlayerCommandRequest(mediaSession, controller, playerCommand)
+        }
+
+        override fun onSetMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: List<MediaItem>,
+            startIndex: Int,
+            startPositionMs: Long,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val requested = mediaItems.getOrNull(startIndex) ?: mediaItems.firstOrNull()
+            val requestedId = requested?.mediaId?.takeIf { it.startsWith(CAR_ITEM_PREFIX) }
+                ?.removePrefix(CAR_ITEM_PREFIX)
+            if (requestedId == null) {
+                return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(mediaItems, startIndex, startPositionMs))
+            }
+
+            val result = SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
+            scope.launch {
+                try {
+                    player.pause()
+                    prefetchedSentence?.cancel()
+                    prefetchedSentence = null
+                    prefetchedSentenceIndex = -1
+                    val selected = withContext(Dispatchers.IO) { dao.getItem(requestedId) }
+                        ?: error("This reading is no longer in Yomu.")
+                    val selectedSentences = splitSentences(selected.normalizedText)
+                    check(selectedSentences.isNotEmpty()) { "This reading has no text to speak." }
+                    val progress = withContext(Dispatchers.IO) { dao.getProgress(selected.id) }
+                    val selectedIndex = if (progress?.completed == true) 0
+                    else (progress?.sentenceIndex ?: 0).coerceIn(selectedSentences.indices)
+
+                    playNowResume.onStart(itemId, sentenceIndex, selected.id)
+                    persistPlayNowResumePoint()
+                    itemId = selected.id
+                    title = selected.title
+                    sentences = selectedSentences
+                    sentenceIndex = selectedIndex
+                    offlineNoticePlayed = false
+                    playbackSpeed = getSharedPreferences("speech_preferences", MODE_PRIVATE)
+                        .getFloat("playback_speed", 1f).coerceIn(.7f, 2f)
+                    player.playbackParameters = PlaybackParameters(playbackSpeed)
+
+                    val audio = File(cacheDir, "speech/${selected.id.hashCode()}/auto-$selectedIndex-${System.currentTimeMillis()}.wav")
+                    audio.parentFile?.mkdirs()
+                    val usedOffline = withContext(Dispatchers.IO) { synthesize(sentences[selectedIndex], audio) }
+                    localOnly = usedOffline
+                    pendingOfflineFile = null
+                    pendingOfflineIndex = -1
+                    val firstItem = if (usedOffline) {
+                        val notice = File(cacheDir, "speech/failover-auto.wav")
+                        withContext(Dispatchers.IO) {
+                            synthesizeOffline("Online speech is unavailable. Continuing with your offline voice.", notice)
+                        }
+                        pendingOfflineFile = audio
+                        pendingOfflineIndex = selectedIndex
+                        offlineNoticePlayed = true
+                        mediaItem(notice, -1, "Offline voice")
+                    } else mediaItem(audio, selectedIndex, selected.title)
+
+                    withContext(Dispatchers.IO) {
+                        dao.upsertProgress(dev.yomu.app.data.ReadingProgressEntity(
+                            itemId = selected.id,
+                            sentenceIndex = selectedIndex,
+                            characterOffset = characterOffset(selectedIndex),
+                            lastListenedAt = System.currentTimeMillis(),
+                        ))
+                    }
+                    publishSnapshot()
+                    saveCheckpoint()
+                    result.set(MediaSession.MediaItemsWithStartPosition(listOf(firstItem), 0, 0L))
+                } catch (error: Exception) {
+                    result.setException(error)
+                }
+            }
+            return result
+        }
+
         @androidx.media3.common.util.UnstableApi
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
@@ -583,6 +825,13 @@ class YomuPlaybackService : MediaSessionService() {
     }
 
     companion object {
+        private const val CAR_ROOT_ID = "yomu:root"
+        private const val CAR_TO_READ_ID = "yomu:to-read"
+        private const val CAR_UP_NEXT_ID = "yomu:up-next"
+        private const val CAR_PLAYLISTS_ID = "yomu:playlists"
+        private const val CAR_PLAYLIST_PREFIX = "yomu:playlist:"
+        private const val CAR_ITEM_PREFIX = "yomu:item:"
+        private const val CAR_HOST_PACKAGE = "com.google.android.projection.gearhead"
         const val ACTION_PLAY_ITEM = "dev.yomu.app.playback.PLAY_ITEM"
         const val ACTION_STOP = "dev.yomu.app.playback.STOP"
         const val ACTION_TOGGLE = "dev.yomu.app.playback.TOGGLE"
