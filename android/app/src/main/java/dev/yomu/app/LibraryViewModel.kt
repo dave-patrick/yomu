@@ -150,8 +150,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private val _status = MutableStateFlow<String?>(null)
     val status: StateFlow<String?> = _status.asStateFlow()
-    private val _reading = MutableStateFlow<ReadingItemEntity?>(null)
-    val reading: StateFlow<ReadingItemEntity?> = _reading.asStateFlow()
+    private val readerSelection = dev.yomu.app.playback.ReaderSelection(PlaybackEvents.snapshot.value?.itemId)
+    private var readerGeneration = 0L
+    val reading: StateFlow<ReadingItemEntity?> = readerSelection.target.flatMapLatest { id ->
+        if (id == null) flowOf(null) else repository.dao.observeItem(id)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private val _exportStatus = MutableStateFlow<String?>(null)
     val exportStatus: StateFlow<String?> = _exportStatus.asStateFlow()
     private var exportJob: Job? = null
@@ -164,6 +167,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val playback = PlaybackEvents.snapshot
 
     init {
+        viewModelScope.launch {
+            PlaybackEvents.snapshot.collect { state -> readerSelection.playbackChanged(state?.itemId) }
+        }
         viewModelScope.launch {
             PlaybackEvents.messages.collect { message ->
                 _status.value = message
@@ -238,9 +244,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun markItemRead(itemId: String) = work("Marking as read…") { repository.markItemRead(itemId) }
     fun markItemUnread(itemId: String) = work("Marking as unread…") { repository.markItemUnread(itemId) }
     fun startNow(itemId: String) {
+        val generation = ++readerGeneration
         work("Starting playback…") {
             val item = repository.dao.getItem(itemId) ?: error("This reading item is no longer available.")
-            _reading.value = item
+            if (generation == readerGeneration) readerSelection.open(item.id)
             val resumeSentence = repository.dao.getProgress(itemId)?.sentenceIndex ?: 0
             val intent = Intent(getApplication<Application>(), YomuPlaybackService::class.java)
                 .setAction(YomuPlaybackService.ACTION_PLAY_ITEM)
@@ -254,12 +261,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
     fun openReader(itemId: String) {
+        val generation = ++readerGeneration
         work("Opening reading…") {
-            _reading.value = repository.dao.getItem(itemId)
+            val item = repository.dao.getItem(itemId)
                 ?: error("This reading item is no longer available.")
+            if (generation == readerGeneration) readerSelection.open(item.id)
         }
     }
-    fun closeReader() { _reading.value = null }
+    fun closeReader() { readerGeneration++; readerSelection.close() }
     fun progressFor(itemId: String): Flow<ReadingProgressEntity?> = repository.dao.observeProgress(itemId)
     fun togglePlayback() = playbackControl(YomuPlaybackService.ACTION_TOGGLE)
     fun previousSentence() = playbackControl(YomuPlaybackService.ACTION_PREVIOUS)

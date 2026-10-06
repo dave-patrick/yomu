@@ -602,13 +602,13 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                     },
         ) { padding ->
             when {
-                reading != null -> ReaderScreen(reading!!, vm, onClose = vm::closeReader,
+                reading != null -> androidx.compose.runtime.key(reading!!.id) { ReaderScreen(reading!!, vm, onClose = vm::closeReader,
                     onExportMp3 = { name ->
                         val folder = exportTreeUri?.let(Uri::parse)
                         if (folder == null) mp3Export.launch(name) else vm.exportMp3ToFolder(reading!!, folder, name)
                     }, exportStatus = exportStatus, cancelExport = vm::cancelMp3Export,
                     readerTextScale = readerTextScale, readerSpacing = readerSpacing, readerHighlight = readerHighlight, readerFont = readerFont,
-                    durationDisplay = durationDisplay, modifier = Modifier.padding(padding))
+                    durationDisplay = durationDisplay, modifier = Modifier.padding(padding)) }
                 showAbout -> AboutScreen(modifier = Modifier.padding(padding))
                 showSettings -> SettingsScreen(themeMode, { value -> themeMode = value; prefs.edit().putString("theme_mode", value).putBoolean("dark", value != "light").apply() }, accentIndex,
                     { index -> accentIndex = index; customHex = ""; prefs.edit().putInt("accent", index).remove("customHex").apply() },
