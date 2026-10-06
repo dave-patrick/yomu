@@ -18,6 +18,10 @@ class SyncTests(unittest.TestCase):
     def test_auth_required_for_library_and_files(self):
         for path in ('/api/state','/api/files/anything'):
             self.assertEqual(TestClient(app).get(path).status_code,401)
+    def test_duplicate_capture_returns_existing_identity(self):
+        first=self.client.post('/api/articles',json={'url':'https://example.com/duplicate-contract'}).json()
+        duplicate=self.client.post('/api/articles',json={'url':'https://example.com/duplicate-contract'}).json()
+        self.assertEqual(duplicate,{'status':'already_saved','id':first['id']})
     def test_field_merge_and_same_field_conflict(self):
         base={'id':'merge','name':'Original','sortOrder':0,'createdAt':1}
         self.sync('merge',base)

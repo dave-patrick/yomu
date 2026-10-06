@@ -1,9 +1,44 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Yomu · Your library</title><link rel="icon" type="image/png" href="/icon.png"><link rel="apple-touch-icon" href="/icon.png"><link rel="stylesheet" href="/style.css"><script src="/theme.js"></script><script src="/app.js" defer></script></head>
-<body><aside><div class="brand"><img class="brand-icon" src="/icon.png" alt=""><img class="wordmark" src="/wordmark.png" alt="Yomu"></div><p class="subtitle">Your reading, ready to listen.</p><nav id="navigation"></nav><button id="newPlaylist" class="quiet">+ New playlist</button><a class="roadmap-link" href="/settings.html">Settings</a><div class="connection"><span id="connection">Not connected</span><button id="pairButton" class="quiet">Connect devices</button><button id="disconnect" class="quiet">Disconnect browser</button></div></aside>
-<main><header><div><h1 id="heading">To read</h1><p id="summary">Your articles and documents, together.</p></div><button id="refresh">Sync now</button></header>
-<section class="save"><form id="saveLink"><label for="url">Save an article</label><div class="inputrow"><input id="url" type="url" placeholder="Paste an article link" required><button>Save to Yomu</button></div></form><label class="drop" id="drop">Drop documents here, or <span>browse files</span><input type="file" id="files" accept=".pdf,.docx,.txt" multiple><small>PDF, Word (.docx), or text · up to 20 MB each</small></label></section>
-<div class="filter"><input id="search" type="search" placeholder="Search your library" aria-label="Search your library"><span id="count"></span></div><p id="notice" role="status"></p><section id="library" aria-label="Saved reading"></section></main>
-<dialog id="pair"><form id="pairForm"><h2>Connect your library</h2><p>Use the same private access key on this browser, your phone, and the extension.</p><label>Access key<input id="key" type="password" autocomplete="off" required></label><p class="hint">The key is saved on this device. Only connect browsers you trust.</p><div class="inputrow"><button>Connect</button><button type="button" id="closePair" class="quiet">Cancel</button></div></form></dialog>
-<dialog id="reader"><button id="closeReader" class="quiet">Close reader</button><h2 id="readerTitle"></h2><div id="readerText"></div></dialog>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Yomu · Your library</title><link rel="icon" type="image/png" href="/icon.png"><link rel="apple-touch-icon" href="/icon.png"><link rel="stylesheet" href="/style.css"><script src="/theme.js"></script><script src="/library.js" defer></script><script src="/app.js" defer></script></head>
+<body>
+<a class="skip-link" href="#main">Skip to library</a>
+<aside aria-label="Library navigation">
+  <div class="brand"><img class="brand-icon" src="/icon.png" alt=""><img class="wordmark" src="/wordmark.png" alt="Yomu"></div>
+  <p class="subtitle">Your reading, ready to listen.</p>
+  <nav id="navigation" aria-label="Library views"></nav>
+  <div class="sidebar-tools">
+    <button id="newPlaylist" class="quiet" data-write>New playlist</button>
+    <a class="roadmap-link" href="/settings.html">Settings</a>
+    <button id="themeToggle" class="quiet theme-toggle">
+      <svg class="theme-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5"/></svg>
+      <svg class="theme-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2Z"/></svg>
+      <span id="themeAction">Theme</span>
+    </button>
+  </div>
+  <details class="connection" id="connectionControls">
+    <summary>Connection <span id="connection">Not connected</span></summary>
+    <p id="lastCheck" class="hint">Connect this browser to your library.</p>
+    <button id="pairButton" class="secondary" data-write>Connect devices</button>
+    <button id="disconnect" class="quiet" data-write hidden>Disconnect browser</button>
+  </details>
+</aside>
+<main id="main" tabindex="-1">
+  <header><div><h1 id="heading" tabindex="-1">To read</h1><p id="summary">Your articles and documents, together.</p></div><button id="refresh" class="secondary" title="Check for updates from your other devices">Sync now</button></header>
+  <section class="save" aria-label="Save content">
+    <form id="saveLink"><label for="url">Save an article</label><div class="inputrow"><input id="url" type="url" placeholder="Paste an article link" required><button data-write>Save to Yomu</button></div></form>
+    <div class="drop" id="drop"><p>Drop documents here, or <button id="browseFiles" class="text-button" data-write>browse files</button></p><input class="visually-hidden" type="file" id="files" aria-label="Choose documents to save" accept=".pdf,.docx,.txt" multiple tabindex="-1"><small>PDF, Word (.docx), or text · up to 20 MB each</small></div>
+  </section>
+  <div class="filter"><input id="search" type="search" placeholder="Search your library" aria-label="Search your library"><span id="count"></span></div>
+  <p id="notice" role="status" aria-live="polite" aria-atomic="true"></p>
+  <section id="library" aria-label="Saved reading"></section>
+</main>
+<dialog id="pair" aria-labelledby="pairTitle" aria-describedby="pairHelp pairError">
+  <form id="pairForm"><h2 id="pairTitle">Connect your library</h2><p id="pairHelp">Use the same private access key on this browser, your phone, and the extension.</p><label for="key">Access key</label><input id="key" type="password" autocomplete="off" required><p class="hint">The key is saved on this device. Only connect browsers you trust.</p><p id="pairError" class="form-error" role="alert"></p><div class="inputrow"><button id="connectSubmit" data-write>Connect</button><button type="button" id="closePair" class="secondary">Cancel</button></div></form>
+</dialog>
+<dialog id="nameDialog" aria-labelledby="nameTitle" aria-describedby="nameError">
+  <form id="nameForm"><h2 id="nameTitle">New playlist</h2><label id="nameLabel" for="nameInput">Playlist name</label><input id="nameInput" required maxlength="1000"><p id="nameError" class="form-error" role="alert"></p><div class="inputrow"><button id="nameSubmit" data-write>Create playlist</button><button type="button" id="closeName" class="secondary">Cancel</button></div></form>
+</dialog>
+<dialog id="reader" aria-labelledby="readerTitle"><div class="dialog-toolbar"><button id="closeReader" class="secondary">Close reader</button><a id="readerSource" target="_blank" rel="noopener noreferrer" hidden>Open source</a></div><h2 id="readerTitle"></h2><div id="readerText"></div></dialog>
+<dialog id="itemDetails" aria-labelledby="detailsTitle"><button id="closeDetails" class="secondary">Close</button><h2 id="detailsTitle">Import details</h2><p id="detailsText"></p><p class="hint">Your phone prepares new content. Open Yomu, sync, and retry a failed import there.</p></dialog>
 </body></html>

@@ -188,9 +188,9 @@ async def article(request: Request):
         raise HTTPException(400, 'Enter a complete article URL.')
     now = int(time.time()*1000)
     with LOCK, connect() as db:
-        for row in db.execute("SELECT payload FROM records WHERE kind='reading_items' AND deleted=0"):
+        for row in db.execute("SELECT id, payload FROM records WHERE kind='reading_items' AND deleted=0"):
             if json.loads(row['payload']).get('sourceUrl') == url:
-                return {'status': 'already_saved'}
+                return {'status': 'already_saved', 'id': row['id']}
         ident = str(uuid.uuid4())
         write(db, 'reading_items', ident, dict(id=ident, title=str(body.get('title') or url)[:1000], sourceType='url', sourceUrl=url, sourceName=parsed.hostname, normalizedText='', importState='pending', warning='Waiting for phone to extract the article.', inToRead=True, importedAt=now, updatedAt=now, estimatedSecondsAtOneX=0, contentVersion=1, manualOrder=now, archived=False))
     return {'status': 'saved', 'id': ident}

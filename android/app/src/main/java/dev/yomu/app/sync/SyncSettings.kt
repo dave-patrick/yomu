@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import dev.yomu.app.SettingsSectionHeader
 import dev.yomu.app.frostedCardColors
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun SyncSettings() {
@@ -29,7 +30,10 @@ fun SyncSettings() {
     var connected by remember { mutableStateOf(vault.token() != null) }
     var busy by remember { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf(false) }
-    var status by remember { mutableStateOf(context.getSharedPreferences("sync_state",0).getString("status", "Not connected").orEmpty()) }
+    val syncState by remember { SyncStatusStore.get(context) }.state.collectAsStateWithLifecycle()
+    var actionError by remember { mutableStateOf<String?>(null) }
+    val status = syncState.message
+    val working = busy || syncState.inProgress
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SettingsSectionHeader("Web library & sync", if (connected) "${direction.label} · ${syncIntervalLabel(minutes)}\n$status" else "Connect your website and phone library", expanded) { expanded = !expanded }
         if (expanded) {
@@ -37,13 +41,13 @@ fun SyncSettings() {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
         if (connected) Text(runCatching { java.net.URI(server).host }.getOrDefault(server), style=MaterialTheme.typography.bodySmall, color=MaterialTheme.colorScheme.onSurfaceVariant)
         Box {
-            OutlinedButton(modifier=Modifier.fillMaxWidth(),enabled=!busy,onClick={ directionMenu=true }) {
+            OutlinedButton(modifier=Modifier.fillMaxWidth(),enabled=!working,onClick={ directionMenu=true }) {
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) { Text("Direction");Text(direction.label) }
             }
             DropdownMenu(expanded=directionMenu,onDismissRequest={ directionMenu=false }) {
                 SyncDirection.entries.forEach { choice -> DropdownMenuItem(text={ Text(choice.label) },onClick={
                     directionMenu=false
-                    scope.launch { busy=true; try { sync.setOptions(choice,minutes);direction=choice } finally { busy=false } }
+                    scope.launch { busy=true; try { sync.setOptions(choice,minutes);direction=choice;actionError=null } catch(error: kotlinx.coroutines.CancellationException) { throw error } catch(error: Exception) { actionError=error.message } finally { busy=false } }
                 }) }
             }
         }
@@ -53,13 +57,13 @@ fun SyncSettings() {
             SyncDirection.DOWNLOAD -> "Bring website changes to this phone. Phone changes are not uploaded; website values can replace edits to matching items."
         },style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         Box {
-            OutlinedButton(modifier=Modifier.fillMaxWidth(),enabled=!busy,onClick={ intervalMenu=true }) {
+            OutlinedButton(modifier=Modifier.fillMaxWidth(),enabled=!working,onClick={ intervalMenu=true }) {
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) { Text("Sync interval");Text(syncIntervalLabel(minutes)) }
             }
             DropdownMenu(expanded=intervalMenu,onDismissRequest={ intervalMenu=false }) {
                 SyncOptions.intervals.forEach { choice -> DropdownMenuItem(text={ Text(syncIntervalLabel(choice)) },onClick={
                     intervalMenu=false
-                    scope.launch { busy=true; try { sync.setOptions(direction,choice);minutes=choice } finally { busy=false } }
+                    scope.launch { busy=true; try { sync.setOptions(direction,choice);minutes=choice;actionError=null } catch(error: kotlinx.coroutines.CancellationException) { throw error } catch(error: Exception) { actionError=error.message } finally { busy=false } }
                 }) }
             }
         }
@@ -70,16 +74,22 @@ fun SyncSettings() {
             Text(if(direction.uploads) "Connecting uploads your current library and documents to your private server. Existing items are merged; provider settings are excluded." else "Connecting downloads your website library. Your phone library is not uploaded.", style=MaterialTheme.typography.bodySmall)
         }
         Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-            Button(enabled=!busy,onClick={ scope.launch {
+            Button(enabled=!working,onClick={ scope.launch {
                 busy=true
+                actionError=null
                 try {
                     if(!connected) { sync.configure(server.trim(),token);token="";connected=true }
-                    status=sync.sync()
-                } catch(error: Exception) { status=error.message ?: "Sync failed. Try again." }
+                    sync.sync()
+                } catch(error: kotlinx.coroutines.CancellationException) { throw error }
+                catch(error: Exception) { actionError=error.message ?: "Sync failed. Try again." }
                 finally { busy=false }
-            } }) { Text(if(busy) "Syncing…" else if(connected) "Sync now" else "Connect & sync") }
-            if(connected) OutlinedButton(enabled=!busy,onClick={ scope.launch { sync.disconnect();connected=false;status="Disconnected. Your phone library is preserved." } }) { Text("Disconnect") }
+            } }) { Text(if(working) "Syncing…" else if(connected) "Sync now" else "Connect & sync") }
+            if(connected) OutlinedButton(enabled=!working,onClick={ scope.launch { busy=true; try { sync.disconnect();connected=false;actionError=null } catch(error: kotlinx.coroutines.CancellationException) { throw error } catch(error: Exception) { actionError=error.message } finally { busy=false } } }) { Text("Disconnect") }
         }
+        if (syncState.lastSuccess > 0) Text("Last successful sync: " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(syncState.lastSuccess)), style=MaterialTheme.typography.bodySmall)
+        if (syncState.lastAttempt > 0) Text("Last attempt: " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(syncState.lastAttempt)), style=MaterialTheme.typography.bodySmall)
+        (syncState.error ?: actionError)?.let { Text(it, color=MaterialTheme.colorScheme.error) }
+        if (syncState.error != null && !syncState.retryable) Text("Automatic retries are paused. Fix the issue, then tap Sync now or reconnect.", style=MaterialTheme.typography.bodySmall)
         }
         }
         }

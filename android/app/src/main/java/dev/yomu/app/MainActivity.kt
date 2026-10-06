@@ -177,7 +177,8 @@ class MainActivity : ComponentActivity() {
                 while (true) {
                     try {
                         val lastSync = getSharedPreferences("sync_state", 0).getLong("lastSync", 0)
-                        if (dev.yomu.app.sync.SyncOptions(applicationContext).isDue(lastSync))
+                        if (dev.yomu.app.sync.SyncStatusStore.get(applicationContext).canRetryAutomatically() &&
+                            dev.yomu.app.sync.SyncOptions(applicationContext).isDue(lastSync))
                             dev.yomu.app.sync.LibrarySync(applicationContext).sync()
                     }
                     catch (error: kotlinx.coroutines.CancellationException) { throw error }
@@ -680,9 +681,10 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                         onMoveItemUp = { vm.moveToReadItem(it.id, -1) }, onMoveItemDown = { vm.moveToReadItem(it.id, 1) },
                         showDurations = false, swipeRightAction = swipeRightAction, swipeLeftAction = swipeLeftAction, itemSpacingDp = listSpacingDp,
                         archiveActionEnabled = true, readStateActionEnabled = true,
+                        onMenuPlay = { vm.startNow(it.id) }, longPressLabel = "Add to Up next",
                         onMarkStateChange = { if (it.completed) vm.markItemUnread(it.id) else vm.markItemRead(it.id) },
                         onSwipeAction = { row, action -> if (action == "Delete") deleteItemPending = row else handleLibrarySwipe(action, row, vm, enqueueAndResetQueue) { playlistItemPending = row } })
-                    Destination.UP_NEXT -> LibraryList(upNext, emptyLabel = "Up next is clear", hint = "Tap an item in To read to add it here.", onTap = { if (it.importState == "failed") vm.retryImport(it.id) else vm.startNow(it.id) }, onPlayNow = { if (it.importState == "failed") vm.retryImport(it.id) else vm.startNow(it.id) }, onRemoveQueue = { vm.removeFromQueue(it.id) }, onSelectPlaylist = { playlistItemPending = it }, modifier = Modifier.padding(padding), queueMode = true,
+                    Destination.UP_NEXT -> LibraryList(upNext, emptyLabel = "Up next is clear", hint = "Hold an item in To read to add it here. Tap a queued item to play.", onTap = { if (it.importState == "failed") vm.retryImport(it.id) else vm.startNow(it.id) }, onPlayNow = { if (it.importState == "failed") vm.retryImport(it.id) else vm.startNow(it.id) }, onRemoveQueue = { vm.removeFromQueue(it.id) }, onSelectPlaylist = { playlistItemPending = it }, modifier = Modifier.padding(padding), queueMode = true,
                         sortMode = upNextSortMode,
                         onSortModeChange = { mode, sorted -> upNextSortMode = mode; libraryPrefs.edit().putString("up_next_sort", mode).apply(); vm.reorderQueue(sorted.map { it.id }) },
                         showSortPicker = true, allowReorder = upNextSortMode == "Manual", swipeRightAction = swipeRightAction, swipeLeftAction = swipeLeftAction,
@@ -770,13 +772,15 @@ private fun LibraryList(
     readStateActionEnabled: Boolean = false,
     onSwipeAction: (ReadingListRow, String) -> Unit = { _, _ -> },
     onMarkStateChange: (ReadingListRow) -> Unit = {},
+    onMenuPlay: (ReadingListRow) -> Unit = onPlayNow,
+    longPressLabel: String = "Play now",
 ) {
     val effectiveSortMode = if (!showDurations && sortMode in setOf("Shortest", "Longest")) "Newest" else sortMode
     val shownRows = remember(rows, effectiveSortMode, queueMode) { sortLibraryRows(rows, effectiveSortMode, queueMode) }
     Column(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(collectionLabel ?: if (queueMode) "Your listening order" else "Saved for when you have a moment", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (!queueMode) Text(tapHint ?: "Tap to queue · hold to play", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tapHint ?: if (queueMode) "Tap to play · hold to play now" else "Tap to queue · hold to play", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val totalMinutes = shownRows.sumOf { it.estimatedSecondsAtOneX } / 60
             if (showDurations && shownRows.isNotEmpty()) Text("${shownRows.size} items  ·  ${formatDuration(totalMinutes * 60)} total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             if (showSortPicker) MenuChoiceDropdown("Sort", effectiveSortMode, if (showDurations) librarySortOptions else listOf("Manual", "Newest", "Oldest")) { choice ->
@@ -800,7 +804,8 @@ private fun LibraryList(
                         onTap = { onTap(row) }, onPlayNow = { onPlayNow(row) }, onRemoveQueue = { onRemoveQueue(row) },
                         onSelectPlaylist = { onSelectPlaylist(row) }, onMoveUp = { onMoveItemUp(row) }, onMoveDown = { onMoveItemDown(row) },
                         onSwipeAction = { onSwipeAction(row, it) }, onMarkStateChange = { onMarkStateChange(row) },
-                        archiveActionEnabled = archiveActionEnabled, readStateActionEnabled = readStateActionEnabled)
+                        archiveActionEnabled = archiveActionEnabled, readStateActionEnabled = readStateActionEnabled,
+                        onMenuPlayNow = { onMenuPlay(row) }, longPressLabel = longPressLabel)
                 }
             }
         }
@@ -813,7 +818,8 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                            swipeRightAction: String, swipeLeftAction: String, itemSpacingDp: Int,
                            onTap: () -> Unit, onPlayNow: () -> Unit, onRemoveQueue: () -> Unit, onSelectPlaylist: () -> Unit,
                            onMoveUp: () -> Unit, onMoveDown: () -> Unit, onSwipeAction: (String) -> Unit,
-                           onMarkStateChange: () -> Unit, archiveActionEnabled: Boolean, readStateActionEnabled: Boolean) {
+                            onMarkStateChange: () -> Unit, archiveActionEnabled: Boolean, readStateActionEnabled: Boolean,
+                            onMenuPlayNow: () -> Unit = onPlayNow, longPressLabel: String = "Play now") {
     var menu by remember { mutableStateOf(false) }
     val ready = row.importState == "ready"
     val swipeState = rememberSwipeToDismissBoxState()
@@ -869,6 +875,7 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
             role = Role.Button,
             onClick = onTap,
             onLongClick = onPlayNow,
+            onLongClickLabel = longPressLabel,
         ).frostedGlass(),
         colors = frostedCardColors(),
         shape = RoundedCornerShape(18.dp),
@@ -896,7 +903,7 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(20.dp),
                         containerColor = menuSurfaceColor(), tonalElevation = 10.dp,
                         modifier = Modifier.frostedGlass(RoundedCornerShape(20.dp))) {
-                        DropdownMenuItem(text = { Text("Play now") }, onClick = { menu = false; onPlayNow() })
+                        DropdownMenuItem(text = { Text("Play now") }, enabled = ready, onClick = { menu = false; onMenuPlayNow() })
                         if (readStateActionEnabled) DropdownMenuItem(text = { Text(if (row.completed) "Mark as unread" else "Mark as read") }, onClick = { menu = false; onMarkStateChange() })
                         if (archiveActionEnabled) DropdownMenuItem(text = { Text("Move to Archive") }, onClick = { menu = false; onSwipeAction("Archive") })
                         if (queueMode) DropdownMenuItem(text = { Text(removeLabel) }, onClick = { menu = false; onRemoveQueue() })

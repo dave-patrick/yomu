@@ -7,6 +7,28 @@ commitment. The original Android milestones remain in
 
 ## Product direction
 
+### Usability implementation — 2026-10-06
+
+Implemented the first usability pass from R09–R13/R16: reachable mobile
+connection and playlist controls; replacement-key validation before activation;
+in-dialog errors; serialized website actions and stable keyed rows/navigation;
+Read + More item controls; explicit import states and contextual empty views;
+newest-first completion history; keyboard file browsing, dialog labels, progress
+semantics, narrow-screen layouts, and matching light/dark tokens. The left-nav
+theme toggle and Settings System/Light/Dark preference are implemented.
+
+Android now separates the To read “Play now” menu from the hold-to-queue gesture,
+shows gesture help and long-press accessibility labels, and observes sync attempts,
+successes, failures, and busy state live. Permanent authentication/server-library
+errors pause automatic retries; transient network errors keep retrying. The APK
+is built and unit-tested; installation and device/TalkBack acceptance are pending.
+
+Remaining: dedicated web reader routes and Back restoration, phone Read quietly
+and follow controls, broader large-text/TalkBack coverage, and playlist feature
+parity. The grouped checklists below remain open until their full criteria pass.
+
+Validation and implementation details: [Usability pass](docs/USABILITY-PASS-2026-10-06.md).
+
 Capture from a laptop or phone, organize once, and read or listen wherever it is
 convenient. Preserve an offline-capable phone library and make cross-device state
 understandable. Keep To read, Up next, playlists, archive, and Read history distinct.

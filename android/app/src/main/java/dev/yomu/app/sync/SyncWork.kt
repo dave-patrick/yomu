@@ -7,11 +7,11 @@ import java.util.concurrent.TimeUnit
 class SyncWork(context: Context, parameters: WorkerParameters) : CoroutineWorker(context,parameters) {
     override suspend fun doWork(): Result = try {
         val lastSync = applicationContext.getSharedPreferences("sync_state",0).getLong("lastSync",0)
-        if (SyncOptions(applicationContext).isDue(lastSync)) LibrarySync(applicationContext).sync()
+        if (SyncStatusStore.get(applicationContext).canRetryAutomatically() && SyncOptions(applicationContext).isDue(lastSync)) LibrarySync(applicationContext).sync()
         Result.success()
     }
     catch(error: kotlinx.coroutines.CancellationException) { throw error }
-    catch(error: Exception) { Result.retry() }
+    catch(error: Exception) { if (classifySyncFailure(error).retryable) Result.retry() else Result.failure() }
     companion object {
         fun schedule(context: Context) {
             val minutes = SyncOptions(context).minutes()

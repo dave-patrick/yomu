@@ -75,7 +75,7 @@ class LibrarySync(private val context: Context) {
         if(body != null) builder.post(body.toRequestBody("application/json".toMediaType()))
         client.newCall(builder.build()).execute().use { response ->
             val responseBody = response.body!!.string()
-            require(response.isSuccessful) { runCatching { JSONObject(responseBody).getString("detail") }.getOrDefault("Yomu sync returned HTTP ${response.code}.") }
+            if (!response.isSuccessful) throw SyncHttpException(response.code, runCatching { JSONObject(responseBody).getString("detail") }.getOrDefault("Yomu sync returned HTTP ${response.code}."))
             return JSONObject(responseBody)
         }
     }
@@ -88,6 +88,7 @@ class LibrarySync(private val context: Context) {
         }
         vault.save(server, token)
         SyncWork.schedule(context)
+        SyncStatusStore.get(context).reconnected()
     } }
     suspend fun disconnect() = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -95,6 +96,7 @@ class LibrarySync(private val context: Context) {
             androidx.work.WorkManager.getInstance(context).cancelUniqueWork("yomu-library-sync")
             database.openHelper.writableDatabase.execSQL("DELETE FROM sync_baselines")
             prefs.edit().clear().commit()
+            SyncStatusStore.get(context).reset()
         }
     }
     suspend fun setOptions(direction: SyncDirection, minutes: Int) = withContext(Dispatchers.IO) { mutex.withLock {
@@ -103,6 +105,9 @@ class LibrarySync(private val context: Context) {
     } }
     suspend fun sync(): String = withContext(Dispatchers.IO) { mutex.withLock {
         if(vault.token() == null) return@withLock "Not connected"
+        val status = SyncStatusStore.get(context)
+        status.started()
+        try {
         val direction = SyncOptions(context).direction()
         val db = database.openHelper.writableDatabase
         // Upload originals once, before advertising the fileId to another device.
@@ -118,7 +123,7 @@ class LibrarySync(private val context: Context) {
             val req = Request.Builder().url(vault.server()+"/api/files/$fileId").header("Authorization", "Bearer ${vault.token()}")
                 .header("X-File-Name", java.net.URLEncoder.encode(file.name, "UTF-8").replace("+", "%20"))
                 .put(file.asRequestBody("application/octet-stream".toMediaType())).build()
-            client.newCall(req).execute().use { require(it.isSuccessful) { "Could not sync ${file.name}: HTTP ${it.code}." } }
+            client.newCall(req).execute().use { if (!it.isSuccessful) throw SyncHttpException(it.code, "Could not sync ${file.name}: HTTP ${it.code}.") }
             check(prefs.edit().putString("file:$itemId",fileId).commit())
         }
         lateinit var sent: Map<String,JSONObject>
@@ -143,7 +148,7 @@ class LibrarySync(private val context: Context) {
                 db.execSQL("INSERT OR REPLACE INTO sync_baselines VALUES (?,?)", arrayOf("__instance",response.getString("instance")))
             }
             val message = if (conflicts.length() > 0) "Uploaded. ${conflicts.length()} conflicts need two-way sync to resolve." else "Uploaded just now"
-            prefs.edit().putString("status",message).putLong("lastSync",System.currentTimeMillis()).apply()
+            status.succeeded(message)
             return@withLock message
         }
         val records = response.getJSONArray("records")
@@ -195,7 +200,7 @@ class LibrarySync(private val context: Context) {
             val item = dao.getItem(itemId) ?: continue
             val req = Request.Builder().url(vault.server()+"/api/files/$fileId").header("Authorization","Bearer ${vault.token()}").build()
             client.newCall(req).execute().use { responseFile ->
-                require(responseFile.isSuccessful) { "Could not download ${item.title}." }
+                if (!responseFile.isSuccessful) throw SyncHttpException(responseFile.code, "Could not download ${item.title}.")
                 val newId = ContentImporter(context,dao).importDocument(item.sourceName ?: item.title,null) { responseFile.body!!.byteStream() }
                 val extracted = dao.getItem(newId) ?: error("Document import did not finish.")
                 database.withTransaction {
@@ -208,8 +213,10 @@ class LibrarySync(private val context: Context) {
         }
         val conflicts = response.optJSONArray("conflicts")?.length() ?: 0
         val message = if(conflicts > 0) "Synced. $conflicts conflicting fields kept the server value." else "Synced just now"
-        prefs.edit().putString("status",message).putLong("lastSync",System.currentTimeMillis()).apply()
+        status.succeeded(message)
         message
+        } catch (error: kotlinx.coroutines.CancellationException) { status.paused(); throw error }
+        catch (error: Exception) { status.failed(error); throw error }
     } }
     private fun baseline(key: String,row: JSONObject) { database.openHelper.writableDatabase.execSQL("INSERT OR REPLACE INTO sync_baselines VALUES (?,?)",arrayOf(key,row.toString())) }
     private fun delete(kind: String,ident: String) {
