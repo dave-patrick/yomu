@@ -28,4 +28,19 @@ class LibraryDatabaseMigrationTest {
             }
         }
     }
+
+    @Test fun syncMigrationPreservesPhoneLibrary() {
+        val name = "yomu-sync-migration-test.db"
+        helper.createDatabase(name, 3).apply {
+            execSQL("INSERT INTO reading_items (id,title,sourceType,normalizedText,importState,inToRead,importedAt,updatedAt,estimatedSecondsAtOneX,contentVersion,manualOrder,archived) VALUES ('saved','Keep me','txt','Original text','ready',1,123,123,60,1,123,0)")
+            close()
+        }
+        helper.runMigrationsAndValidate(name, 4, true, LibraryDatabase.MIGRATION_3_4).use { db ->
+            db.query("SELECT title,normalizedText FROM reading_items WHERE id='saved'").use { cursor ->
+                assertEquals(true,cursor.moveToFirst())
+                assertEquals("Keep me",cursor.getString(0));assertEquals("Original text",cursor.getString(1))
+            }
+            db.execSQL("INSERT INTO sync_baselines VALUES ('reading_items/saved','{}')")
+        }
+    }
 }

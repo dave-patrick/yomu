@@ -1,0 +1,23 @@
+# Deployment proposal: paid disk needed for durable library and file storage.
+services:
+  - type: web
+    name: yomu
+    runtime: python
+    plan: starter
+    region: oregon
+    rootDir: web
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeployTrigger: off
+    disk:
+      name: yomu-library
+      mountPath: /var/data/yomu
+      sizeGB: 1
+    envVars:
+      - key: YOMU_DATA_DIR
+        value: /var/data/yomu
+      - key: YOMU_ACCESS_TOKEN
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: 3.12.11

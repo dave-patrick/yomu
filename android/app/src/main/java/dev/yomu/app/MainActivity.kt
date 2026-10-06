@@ -166,12 +166,28 @@ import kotlinx.coroutines.launch
 import java.text.BreakIterator
 import java.util.Locale
 import kotlin.math.roundToInt
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
 
 class MainActivity : ComponentActivity() {
+    private fun startLibrarySync() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    try { dev.yomu.app.sync.LibrarySync(applicationContext).sync() }
+                    catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                    catch (error: Exception) { /* Offline edits remain pending for the next attempt. */ }
+                    delay(30_000)
+                }
+            }
+        }
+    }
     private var pendingShare by mutableStateOf<Intent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        startLibrarySync()
         pendingShare = intent.takeIf { it.action == Intent.ACTION_SEND || it.action == Intent.ACTION_SEND_MULTIPLE }
         setContent { YomuApp(sharedIntent = pendingShare, onShareConsumed = { pendingShare = null }) }
     }
@@ -1564,6 +1580,7 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                 }
             }
             }
+            item { dev.yomu.app.sync.SyncSettings() }
             item { SettingsSectionHeader("Advanced", "Backup, OPML, and diagnostic log", advancedExpanded) { advancedExpanded = !advancedExpanded } }
             if (advancedExpanded) {
             item { SettingsGroupHeading("Manual backup") }
@@ -1603,7 +1620,7 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                     colors = ButtonDefaults.outlinedButtonColors(containerColor = frostedSurfaceColor()),
                 ) { Text("About Yomu") }
             }
-            item { Text("Your library stays on this phone. Create a manual backup to save your items, playlists, reading positions, and appearance settings.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item { Text("Your library works offline. Optional web sync shares content with your private Yomu server. Manual backups also preserve appearance settings.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
         if (showDiagnostics) AlertDialog(

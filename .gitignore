@@ -36,3 +36,6 @@ azure keys.txt
 *-download.zip
 *.mp3
 *.wav
+web/.venv/
+web/data/
+web/.test-data/

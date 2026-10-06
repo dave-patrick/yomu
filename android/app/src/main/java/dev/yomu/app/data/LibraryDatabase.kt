@@ -242,6 +242,9 @@ interface LibraryDao {
     suspend fun nextManualOrder(): Long
 }
 
+@Entity(tableName = "sync_baselines")
+data class SyncBaselineEntity(@PrimaryKey val key: String, val payload: String)
+
 @Database(
     entities = [
         ReadingItemEntity::class,
@@ -250,8 +253,9 @@ interface LibraryDao {
         QueueEntryEntity::class,
         ReadingProgressEntity::class,
         ReadHistoryEntity::class,
+        SyncBaselineEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -273,12 +277,18 @@ abstract class LibraryDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS sync_baselines (`key` TEXT NOT NULL, `payload` TEXT NOT NULL, PRIMARY KEY(`key`))")
+            }
+        }
+
         fun get(context: Context): LibraryDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 LibraryDatabase::class.java,
                 DATABASE_NAME,
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
         }
 
         const val DATABASE_NAME = "yomu-library.db"
