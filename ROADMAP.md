@@ -58,14 +58,33 @@ P1 is the next product work; P2 follows the core experience; P3 needs separate s
 
 ### Website settings and roadmap access
 
-- [ ] Provide a persistent Settings entry on desktop and mobile navigation.
-- [ ] Open the complete roadmap inside Yomu, without GitHub authentication or external navigation.
-- [ ] Keep the website copy generated from this document so published plans do not drift.
+- [x] Provide a persistent Settings entry on desktop and mobile navigation.
+- [x] Open the complete roadmap inside Yomu, without GitHub authentication or external navigation.
+- [x] Keep the website copy generated from this document so published plans do not drift.
 - [ ] Group appearance, connection, sync, reading, and later listening controls in Settings.
 - [ ] Verify direct links, Back navigation, light/dark appearance, and roadmap readability on narrow screens.
 
 Priority: P1, alongside Wave 1. Basic appearance and roadmap access ship first;
 reader, sync policy, and listening controls follow their respective waves.
+
+### Website theme settings and navigation toggle
+
+Priority: P1; effort: S. Ship independently of the full reader.
+
+- [x] Offer Light, Dark, and System in website Settings and save the preference for this browser.
+- [ ] Add a visible light/dark button in the left navigation for switching without opening Settings.
+- [ ] Show the active theme and label the action clearly; keep the button keyboard-accessible.
+- [ ] Keep the navigation button and Settings selector in sync. An explicit toggle selects
+  Light or Dark; choosing System in Settings restores automatic OS theme following.
+- [ ] Apply consistent theme colors to the library, reader, settings, roadmap, dialogs,
+  menus, inputs, source-icon tiles, and focus indicators.
+- [ ] Preserve the selected theme through reload/navigation without a wrong-theme flash.
+- [ ] Provide the same quick toggle in the compact mobile navigation and verify contrast
+  and branding readability in both themes.
+
+Gate: switching from navigation updates the whole website and its Settings value;
+System follows OS changes; preferences remain browser-local and do not change the
+phone or extension theme. The left-navigation toggle is planned, not yet implemented.
 
 ### Wave 0 — Establish a dependable baseline
 
