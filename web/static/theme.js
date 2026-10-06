@@ -1,0 +1,1 @@
+function applyYomuTheme(){const value=localStorage.getItem('yomu.theme')||'system';const light=value==='light'||(value==='system'&&matchMedia('(prefers-color-scheme:light)').matches);document.documentElement.dataset.theme=light?'light':'dark';}applyYomuTheme();matchMedia('(prefers-color-scheme:light)').addEventListener('change',applyYomuTheme);

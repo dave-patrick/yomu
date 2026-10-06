@@ -56,6 +56,17 @@ P1 is the next product work; P2 follows the core experience; P3 needs separate s
 
 ## Delivery waves and acceptance gates
 
+### Website settings and roadmap access
+
+- [ ] Provide a persistent Settings entry on desktop and mobile navigation.
+- [ ] Open the complete roadmap inside Yomu, without GitHub authentication or external navigation.
+- [ ] Keep the website copy generated from this document so published plans do not drift.
+- [ ] Group appearance, connection, sync, reading, and later listening controls in Settings.
+- [ ] Verify direct links, Back navigation, light/dark appearance, and roadmap readability on narrow screens.
+
+Priority: P1, alongside Wave 1. Basic appearance and roadmap access ship first;
+reader, sync policy, and listening controls follow their respective waves.
+
 ### Wave 0 — Establish a dependable baseline
 
 - [ ] Run a real Chrome extension walkthrough: install/reload, pairing permission,
