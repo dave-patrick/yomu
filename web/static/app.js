@@ -58,7 +58,7 @@ function sourceIcon(item){
     const url=new URL(item.sourceUrl);
     if(!['https:','http:'].includes(url.protocol))throw Error();
     mark.classList.add('site-icon');mark.textContent=url.hostname.replace(/^www\./,'').slice(0,1).toUpperCase();
-    const img=el('img');img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';
+    const img=el('img');img.alt='';img.referrerPolicy='no-referrer';
     img.onload=()=>mark.replaceChildren(img);
     img.onerror=()=>{img.onload=null;img.onerror=null;};
     img.src='https://'+url.host+'/favicon.ico';
