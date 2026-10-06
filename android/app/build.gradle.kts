@@ -13,8 +13,8 @@ android {
         applicationId = "dev.yomu.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 15
-        versionName = "1.0.0-alpha15"
+        versionCode = 16
+        versionName = "1.0.0-alpha16"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += "arm64-v8a" }
     }

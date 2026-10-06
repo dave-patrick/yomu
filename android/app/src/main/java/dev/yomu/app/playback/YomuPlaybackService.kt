@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
@@ -97,7 +98,7 @@ class YomuPlaybackService : MediaLibraryService() {
         super.onCreate()
         player = ExoPlayer.Builder(this).build().apply {
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_SPEECH).build(), true)
-            // Keep the CPU available while screen-off playback crosses between synthesized sentences.
+            // ExoPlayer holds this only while ready/buffering; speech preparation has its own lease.
             setWakeMode(C.WAKE_MODE_LOCAL)
             setHandleAudioBecomingNoisy(true)
             addListener(object : Player.Listener {
@@ -152,6 +153,9 @@ class YomuPlaybackService : MediaLibraryService() {
             })
         }
         session = MediaLibrarySession.Builder(this, player, SessionCallbacks()).build()
+        // The phone UI sends service intents, without connecting a MediaController.
+        // Register now so Media3 observes playback and starts its foreground notification.
+        addSession(session)
         val playbackPrefs = getSharedPreferences("yomu_playback", MODE_PRIVATE)
         playNowResume = PlayNowResumeState(
             playbackPrefs.getString("return_item_id", null)?.let {
@@ -316,8 +320,8 @@ class YomuPlaybackService : MediaLibraryService() {
             generateAndPlayNext()
             return
         }
-        scope.launch {
-            val item = withContext(Dispatchers.IO) { dao.getItem(id) } ?: return@launch
+        scope.launch { withSpeechCpuAwake {
+            val item = withContext(Dispatchers.IO) { dao.getItem(id) } ?: return@withSpeechCpuAwake
             itemId = id
             title = item.title
             localOnly = false
@@ -328,7 +332,13 @@ class YomuPlaybackService : MediaLibraryService() {
             publishSnapshot()
             saveCheckpoint()
             generateAndPlayNext()
-        }
+        } }
+    }
+
+    private suspend fun <T> withSpeechCpuAwake(block: suspend () -> T): T {
+        val lock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Yomu:speech-preparation")
+        lock.setReferenceCounted(false)
+        return SpeechCpuGuard({ timeout -> lock.acquire(timeout) }, { if (lock.isHeld) lock.release() }).run(block)
     }
 
     private fun generateAndPlayNext() {
@@ -337,7 +347,7 @@ class YomuPlaybackService : MediaLibraryService() {
         if (sentenceIndex >= sentences.size) {
             player.pause()
             PlaybackEvents.publish(null)
-            scope.launch {
+            scope.launch { withSpeechCpuAwake {
                 withContext(Dispatchers.IO) {
                     dao.upsertProgress(dev.yomu.app.data.ReadingProgressEntity(itemId = id, sentenceIndex = sentences.size, characterOffset = 0, completed = true, lastListenedAt = System.currentTimeMillis()))
                     repository.completeItem(id)
@@ -350,7 +360,7 @@ class YomuPlaybackService : MediaLibraryService() {
                     val next = withContext(Dispatchers.IO) { dao.getUpNext().firstOrNull()?.itemId }
                     if (next != null) playItem(next, skipReturnCapture = true)
                 }
-            }
+            } }
             return
         }
         isGenerating = true
@@ -360,32 +370,36 @@ class YomuPlaybackService : MediaLibraryService() {
         if (readyNext != null) {
             prefetchedSentence = null
             prefetchedSentenceIndex = -1
-            scope.launch {
+            scope.launch { withSpeechCpuAwake {
                 try {
                     val generated = readyNext.await()
                     startGeneratedPlayback(generated.file, generated.index, generated.offline)
+                } catch (error: CancellationException) {
+                    throw error
                 } catch (_: Exception) {
                     PlaybackEvents.report("Could not start speech. Check your voice settings or install the offline voice in Settings.")
                     player.pause()
                 } finally { isGenerating = false }
-            }
+            } }
             return
         }
         prefetchedSentence?.cancel()
         prefetchedSentence = null
         prefetchedSentenceIndex = -1
         val file = File(cacheDir, "speech/${id.hashCode()}/$index-${System.currentTimeMillis()}.wav")
-        scope.launch {
+        scope.launch { withSpeechCpuAwake {
             try {
                 val usedOffline = withContext(Dispatchers.IO) { synthesize(text, file) }
                 startGeneratedPlayback(file, index, usedOffline)
+            } catch (error: CancellationException) {
+                throw error
             } catch (_: Exception) {
                 val offlineOnly = getSharedPreferences("speech_preferences", MODE_PRIVATE).getBoolean("offline_only", false)
                 PlaybackEvents.report(if (offlineOnly) "Offline speech could not start. Check that the Kokoro voice is installed in Settings."
                     else "Could not start speech. Check your online voice settings or install the offline voice in Settings.")
                 player.pause()
             } finally { isGenerating = false }
-        }
+        } }
     }
 
     private suspend fun startGeneratedPlayback(file: File, index: Int, usedOffline: Boolean) {
@@ -412,10 +426,10 @@ class YomuPlaybackService : MediaLibraryService() {
         prefetchedSentenceIndex = index
         val text = sentences[index]
         val file = File(cacheDir, "speech/${id.hashCode()}/prefetch-$index-${System.currentTimeMillis()}.wav")
-        prefetchedSentence = scope.async(Dispatchers.IO) {
+        prefetchedSentence = scope.async(Dispatchers.IO) { withSpeechCpuAwake {
             val offline = synthesize(text, file)
             GeneratedSentence(index, file, offline)
-        }
+        } }
         val generatedSentence = prefetchedSentence ?: return
         scope.launch {
             try {
