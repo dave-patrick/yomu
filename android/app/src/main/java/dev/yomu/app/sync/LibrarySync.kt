@@ -97,15 +97,20 @@ class LibrarySync(private val context: Context) {
             prefs.edit().clear().commit()
         }
     }
+    suspend fun setOptions(direction: SyncDirection, minutes: Int) = withContext(Dispatchers.IO) { mutex.withLock {
+        SyncOptions(context).save(direction, minutes)
+        if (vault.token() != null) SyncWork.schedule(context)
+    } }
     suspend fun sync(): String = withContext(Dispatchers.IO) { mutex.withLock {
         if(vault.token() == null) return@withLock "Not connected"
+        val direction = SyncOptions(context).direction()
         val db = database.openHelper.writableDatabase
         // Upload originals once, before advertising the fileId to another device.
         val uploads = mutableListOf<Pair<String,String>>()
         db.query("SELECT id, originalFilePath FROM reading_items WHERE originalFilePath IS NOT NULL").use { cursor ->
             while(cursor.moveToNext()) uploads += cursor.getString(0) to cursor.getString(1)
         }
-        for((itemId,path) in uploads) if(!prefs.contains("file:$itemId")) {
+        for((itemId,path) in uploads) if(direction.uploads && !prefs.contains("file:$itemId")) {
             val file = File(path)
             if(!file.isFile) continue
             require(file.length() <= 20L*1024*1024) { "${file.name} exceeds the 20 MB sync limit." }
@@ -120,13 +125,27 @@ class LibrarySync(private val context: Context) {
         lateinit var base: Map<String,JSONObject>
         database.withTransaction { sent = snapshot(); base = baselines() }
         val changes = JSONArray()
-        for(key in sent.keys + base.keys) if(!equal(sent[key],base[key])) {
+        for(key in sent.keys + base.keys) if(direction.uploads && !equal(sent[key],base[key])) {
             changes.put(JSONObject().put("kind",key.substringBefore('/')).put("id",key.substringAfter('/'))
                 .put("data",sent[key] ?: JSONObject.NULL).put("base",base[key] ?: JSONObject.NULL))
         }
         val instance = db.query("SELECT payload FROM sync_baselines WHERE `key`='__instance'").use { if(it.moveToFirst()) it.getString(0) else "" }
         val clientId = prefs.getString("client",null) ?: UUID.randomUUID().toString().also { prefs.edit().putString("client",it).commit() }
         val response = request("sync",JSONObject().put("client","phone-$clientId").put("instance",instance).put("changes",changes).toString())
+        if (!direction.downloads) {
+            // Acknowledge only accepted uploads. Keep conflicting edits dirty for a later retry.
+            val conflicts = response.optJSONArray("conflicts") ?: JSONArray()
+            val conflicted = (0 until conflicts.length()).map { conflicts.getString(it).substringBefore(": ").split('/').take(2).joinToString("/") }.toSet()
+            database.withTransaction {
+                for (key in sent.keys + base.keys) if (key !in conflicted) {
+                    sent[key]?.let { baseline(key, it) } ?: db.execSQL("DELETE FROM sync_baselines WHERE `key`=?", arrayOf(key))
+                }
+                db.execSQL("INSERT OR REPLACE INTO sync_baselines VALUES (?,?)", arrayOf("__instance",response.getString("instance")))
+            }
+            val message = if (conflicts.length() > 0) "Uploaded. ${conflicts.length()} conflicts need two-way sync to resolve." else "Uploaded just now"
+            prefs.edit().putString("status",message).putLong("lastSync",System.currentTimeMillis()).apply()
+            return@withLock message
+        }
         val records = response.getJSONArray("records")
         database.withTransaction {
             val current = snapshot()

@@ -175,7 +175,11 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (true) {
-                    try { dev.yomu.app.sync.LibrarySync(applicationContext).sync() }
+                    try {
+                        val lastSync = getSharedPreferences("sync_state", 0).getLong("lastSync", 0)
+                        if (dev.yomu.app.sync.SyncOptions(applicationContext).isDue(lastSync))
+                            dev.yomu.app.sync.LibrarySync(applicationContext).sync()
+                    }
                     catch (error: kotlinx.coroutines.CancellationException) { throw error }
                     catch (error: Exception) { /* Offline edits remain pending for the next attempt. */ }
                     delay(30_000)
@@ -1694,7 +1698,7 @@ private fun AboutScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun SettingsSectionHeader(title: String, summary: String, expanded: Boolean, summaryMaxLines: Int = 2, onClick: () -> Unit) {
+internal fun SettingsSectionHeader(title: String, summary: String, expanded: Boolean, summaryMaxLines: Int = 2, onClick: () -> Unit) {
     val shape = RoundedCornerShape(18.dp)
     Card(onClick = onClick, modifier = Modifier.shadow(8.dp, shape).border(
         1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = .52f), shape,
@@ -1980,7 +1984,7 @@ private fun Modifier.frostedGlass(shape: RoundedCornerShape = RoundedCornerShape
         .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = .12f), shape)
 
 @Composable
-private fun frostedCardColors() = CardDefaults.cardColors(
+internal fun frostedCardColors() = CardDefaults.cardColors(
     containerColor = frostedSurfaceColor(),
     contentColor = MaterialTheme.colorScheme.onSurface,
 )

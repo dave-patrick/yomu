@@ -1,15 +1,15 @@
 # Yomu web library and two-way sync
 
 Single-owner web library, Chrome/Opera extension, and optional Android library sync.
-The proposed Render target is project `prj-db22nau7bikc73c7rkn0`, Production
+The deployed Render target is project `prj-db22nau7bikc73c7rkn0`, Production
 environment `evm-db22nau7bikc73c7rkng` in My Workspace.
 
-## Deployment proposal
+## Deployment
 
-The root `render.yaml` proposes one Starter Python service with a 1 GB persistent
+The root `render.yaml` configures one Starter Python service with a 1 GB persistent
 disk at `/var/data/yomu`. SQLite and uploaded files live on that disk. Expected
 base cost is $7.25/month before bandwidth overages. Paid resource creation needs
-the owner's approval; no service has been provisioned by this implementation.
+the owner's approval, which was given for this service. The live site is https://yomu-fmze.onrender.com/.
 Disk-backed deploys briefly interrupt requests and cannot scale to multiple
 instances. This is appropriate for a private personal library.
 
@@ -40,8 +40,8 @@ value and report a conflict. Deletes leave tombstones so an offline device canno
 resurrect deleted saved readings. Queue entries and playlist memberships can be
 explicitly added again. Stable item IDs prevent repeated sync imports.
 
-Phone checks every 30 seconds while the activity is started and through
-WorkManager approximately every 15 minutes in the background (Android may delay
+Phone automatic sync uses the selected interval while the activity is started and through
+WorkManager at a minimum of 15 minutes in the background (Android may delay
 jobs). A manual Sync now button is available. Browser checks every 15 seconds
 while visible. File uploads and document extraction may require another sync
 cycle before the webpage shows the extracted text.
@@ -78,3 +78,8 @@ Removed library records retain their tombstones and uploaded binaries on the
 server in this first version; a future explicit retention/purge workflow can
 reclaim storage. File replacements should use a new file ID. Requests are
 authenticated and content is never exposed by a public file URL.
+
+## Planned web reader and settings
+
+See [Web reader design](../docs/WEB-READER-DESIGN.md) and [Roadmap](../ROADMAP.md).
+These describe planned work; the existing basic text viewer remains the current reader.

@@ -45,6 +45,7 @@ Yomu turns the user's existing reading backlog into an on-device, resumable list
 
 ## Evidence on Hand
 
+- `ROADMAP.md` and `docs/WEB-READER-DESIGN.md` define the planned web reader/settings expansion; web listening and shared global preferences are not yet implemented.
 - `YOMU-PRE-DEVELOPMENT-PACKAGE.md` contains the approved V1 scope, architecture, proposed libraries, and build milestones.
 - `spike/SPIKE-RESULTS.md` records actual Galaxy testing of the Spike's Media3 lifecycle, call recovery, URL extraction fixtures, PDF OCR, DOCX, cloud speech, offline Kokoro, failover, MP3 chapters, and Pocket Casts. This is not a substitute for production-app device QA.
 - `spike/LICENSE-BOM.md` and adjacent evidence files record the native/runtime dependency and license audit. Kokoro/eSpeak model data and a reduced English subset are hash-checked; all 11 Kokoro voices passed a device synthesis regression corpus with the subset.
