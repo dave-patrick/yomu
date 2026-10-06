@@ -2,3 +2,4 @@
 .brand{display:flex;align-items:center;gap:10px;min-width:0}.brand-icon{width:58px;height:58px;object-fit:contain;flex-shrink:0}.brand .wordmark{width:130px;height:58px;min-width:0}@media(max-width:850px){.brand-icon{width:46px;height:46px}.brand .wordmark{width:130px;height:46px}}
 .site-icon{height:44px;border:0;border-radius:10px;background:#242a33;font-size:20px;font-weight:600;overflow:hidden}.site-icon img{width:28px;height:28px;object-fit:contain}
 .site-icon:has(img){background:#f5f6f8;border:1px solid #d9dfe6}.site-icon img{width:30px;height:30px}
+.roadmap-link{display:block;color:var(--muted);text-decoration:none;font-size:13px;padding:10px 17px;border-radius:9px}.roadmap-link:hover{color:var(--blue);background:#22252a}@media(max-width:850px){.roadmap-link{align-self:flex-start;padding:6px 0}}
