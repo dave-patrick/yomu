@@ -64,6 +64,7 @@ See [Android build notes](android/BUILD-AND-LIMITS.md) for installed behavior, l
 ## Project guide
 
 - [Roadmap](ROADMAP.md) — phased next work and acceptance gates.
+- [Product review](docs/PRODUCT-REVIEW-2026-10-06.md) — source-backed findings and 32 prioritized roadmap refinements/enhancements.
 - [Web reader and settings design](docs/WEB-READER-DESIGN.md) — planned web reading, settings ownership, progress sync, and audio architecture.
 - [Product scope and principles](PRODUCT.md) — requirements, V1 boundaries, and user-facing behavior.
 - [Pre-development proposal](YOMU-PRE-DEVELOPMENT-PACKAGE.md) — architecture, technology choices, libraries, licensing, and milestones.

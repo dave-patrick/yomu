@@ -54,6 +54,97 @@ P1 is the next product work; P2 follows the core experience; P3 needs separate s
 | 14 | P3 | Offline web/PWA and web MP3 export | Website/backend | L–XL | Storage/privacy/export decisions should follow stable reading and audio |
 | 15 | P3 | Public distribution readiness | App/extension/backend | XL | Only if the owner chooses distribution beyond personal use |
 
+## Review additions — 2026-10-06
+
+A full source and bounded interface review is recorded in
+[Product review and enhancement backlog](docs/PRODUCT-REVIEW-2026-10-06.md).
+R identifiers refer to that review. These are planned refinements and additions;
+the review did not deploy fixes or verify all phone/browser runtime paths.
+
+### Priority changes and immediate gates
+
+| Order | Priority | Work | Review IDs | Effort |
+|---|---|---|---|---|
+| 1 | P0 gate | Preserve edits/deletes during imports; coordinate backup/restore with active work and subsequent sync | R01–R02 | M |
+| 2 | P1 | Isolate rejected/large originals; fix duplicate article identity for extension playlists; validate record types | R03–R05 | S–M |
+| 3 | P1 | Recover interrupted file persistence; batch/checkpoint initial sync; cancel stale synthesis results | R06–R08 | M |
+| 4 | P1 | Correct phone action labels; mobile pairing/playlist access; stable website refresh; observable sync failures | R09–R12 | S–M |
+| 5 | P1 | Calmer library, proper web reader, quiet phone reading/follow control, accessibility/theme parity, playlist parity | R13–R17 | S–M |
+| 6 | P1–P2 | Original access, bulk/undo, search/tags, durable extension capture, canonical cross-device resume | R18–R22 | M–L |
+| 7 | P2 | Incremental data, icon privacy/cache, bounded storage, conflict/device recovery, independent document jobs | R23–R27 | S–L |
+| 8 | P2 | Setup/health view, usable roadmap/docs, synced annotations, listening comfort | R28–R31 | S–L |
+
+R32 is the focused release/regression gate across these groups. A P0 gate marks a
+content-preservation risk to reproduce and resolve before release, not a claim
+that the review demonstrated production data loss.
+
+### Add to Wave 0 — Reliability and recovery
+
+- [ ] Apply extraction updates to the current existing item, preserve concurrent
+  edits, cancel obsolete import work, and prove deleted items stay deleted (R01).
+- [ ] Coordinate backup/restore with sync/import/playback; validate before dropping
+  rollback and define restore-versus-server reconciliation (R02).
+- [ ] Sync healthy text/metadata despite a failed original; align .doc and size
+  support and show per-file retry/availability (R03).
+- [ ] Return the existing ID for duplicate saves and prove duplicate-to-playlist
+  behavior using the actual backend contract (R04).
+- [ ] Validate versioned record types/defaults/ranges/parents and recover from
+  incompatible records without repeatedly poisoning a full download (R05).
+- [ ] Recover file bytes/metadata after interrupted commits; batch and acknowledge
+  initial sync within server limits (R06–R07).
+- [ ] Cancel or ignore obsolete synthesis after seek/item changes; make phone
+  gesture help, menu labels, and callbacks agree (R08–R09).
+- [ ] Add isolated acceptance fixtures for these paths, one-way modes, popup
+  closure, restore during work, and real device/browser verification (R32).
+
+### Add to Waves 1–3 — Everyday use and reading
+
+- [ ] Keep mobile connection, status, disconnect, and playlist creation reachable;
+  validate replacement keys before activation and show errors in-dialog (R10).
+- [ ] Preserve focus/open controls through polling; coordinate mutations and reject
+  stale responses rather than rebuilding the whole interface mid-action (R11).
+- [ ] Observe last attempt/success/failure live; distinguish permanent errors from
+  network retries and show real per-item extraction state (R12–R13).
+- [ ] Add stable reader/list URLs, Back/search restoration, accurate duplicate
+  feedback, contextual empty views, and completion-date history (R13–R14).
+- [ ] Add phone Read quietly, selectable text, Follow narration control, and a
+  deliberate command target when displayed and playing items differ (R15).
+- [ ] Verify keyboard upload, dialog naming, navigation selection, progress
+  semantics, large text/TalkBack, touch targets, overflow, and theme parity (R16).
+- [ ] Add source/original links and explicit original download availability across
+  devices; preserve canonical text anchors for reading/listening resume (R18/R22).
+
+### Add to Wave 4 and the scale track
+
+- [ ] Add playlist rename/delete/counts/reorder and faster extension destinations;
+  make duplicate membership feedback clear (R17).
+- [ ] Design recoverable deletion/undo with retention and cross-device identity
+  rules before implementation; keep it distinct from Archive (R19).
+- [ ] Extend filters/search/sorting to phone and website, with optional saved views
+  after shared tags/search are reliable (R20).
+- [ ] Persist extension save intents/results and resume playlist completion after
+  popup closure without duplicating captured articles (R21).
+- [ ] Use incremental revisions, list metadata, lazy text, pagination, and cached
+  optimized static assets; retain no-store for private API responses (R23).
+- [ ] Add lazy/cached resilient source icons and an explicit privacy choice (R24).
+- [ ] Show storage usage; bound speech cache/orphan file cleanup and define safe
+  binary/tombstone retention for devices that stay offline (R25).
+- [ ] Add item/field conflict explanations, guided server-recovery/re-pair, device
+  labels/last-seen, and later scoped device revocation (R26).
+- [ ] Move original downloads/extraction to durable independent jobs with progress,
+  cancel/retry from saved originals, and metered/Wi-Fi controls (R27).
+
+### Further product additions
+
+- [ ] Setup/health overview with voice/offline readiness, useful redacted
+  diagnostics, and measured provider usage where supported (R28).
+- [ ] Roadmap contents/anchors/filtering and working internal design links; keep
+  source, installed behavior, and validation claims in documentation aligned (R29).
+- [ ] Synced bookmarks/highlights/notes with text-revision anchors and export,
+  after canonical progress/schema work (R30).
+- [ ] Visible sleep-timer state, end-of-item stop, optional resume rewind, listening
+  bookmarks, and explicit preparing/paused/failed player states (R31).
+
 ## Delivery waves and acceptance gates
 
 ### Website settings and roadmap access

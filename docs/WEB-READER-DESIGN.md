@@ -13,8 +13,10 @@ Keep To read, Up next, playlists, archive, and Read history distinct.
 
 The Render website saves URLs/files, organizes the library, and opens extracted
 text in a basic dialog. The owner has verified initial sync and changes in both
-directions. Android performs article/document extraction. Web audio, automatic
-web reading-position capture, and a web settings screen are not implemented.
+directions. Android performs article/document extraction. Website Settings now
+provides browser-local Light/Dark/System appearance and roadmap access. Web audio,
+automatic reading-position capture, and full reading/sync/connection settings
+remain planned.
 Android has configurable sync direction and interval; the website currently
 refreshes every 15 seconds while visible. Speech credentials remain on the phone.
 
