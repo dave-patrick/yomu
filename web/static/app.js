@@ -60,8 +60,8 @@ function sourceIcon(item){
     mark.classList.add('site-icon');mark.textContent=url.hostname.replace(/^www\./,'').slice(0,1).toUpperCase();
     const img=el('img');img.alt='';img.referrerPolicy='no-referrer';
     img.onload=()=>mark.replaceChildren(img);
-    img.onerror=()=>{img.onload=null;img.onerror=null;};
-    img.src='https://'+url.host+'/favicon.ico';
+    let triedDirect=false; img.onerror=()=>{if(!triedDirect){triedDirect=true;img.src='https://'+url.host+'/favicon.ico';}else{img.onload=null;img.onerror=null;}};
+    img.src='https://www.google.com/s2/favicons?domain='+encodeURIComponent(url.hostname)+'&sz=64';
     mark.title=url.hostname;
   }catch{mark.textContent='↗';}
   return mark;
