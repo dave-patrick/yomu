@@ -27,7 +27,7 @@ function render(){
   else{const members=records('playlist_memberships').filter(m=>m.playlistId===view).sort((a,b)=>a.sortOrder-b.sortOrder);items=members.map(m=>items.find(i=>i.id===m.itemId)).filter(Boolean);}
   items=items.filter(i=>(i.title+' '+(i.sourceName||'')).toLowerCase().includes(query));$('count').textContent=items.length+' items';$('library').replaceChildren();
   if(!items.length){const empty=el('div',undefined,'empty');const img=el('img');img.src='/icon.png';img.alt='';empty.append(img,el('p',query?'No matching reading.':'Save an article or document to start your library.'));$('library').append(empty);}
-  for(const item of items){const row=el('article',undefined,'reading');row.append(el('div',item.sourceType==='url'?'Link':item.sourceType.toUpperCase(),'filemark'));const content=el('div');content.append(el('h2',item.title));const progress=lookup('reading_progress',item.id);content.append(el('p',(item.sourceName||'Document')+' · '+(item.importState==='ready'?Math.max(1,Math.round(item.estimatedSecondsAtOneX/60))+' min':item.warning||'Waiting for phone'),'metadata'));
+  for(const item of items){const row=el('article',undefined,'reading');row.append(sourceIcon(item));const content=el('div');content.append(el('h2',item.title));const progress=lookup('reading_progress',item.id);content.append(el('p',(item.sourceName||'Document')+' · '+(item.importState==='ready'?Math.max(1,Math.round(item.estimatedSecondsAtOneX/60))+' min':item.warning||'Waiting for phone'),'metadata'));
     if(progress && item.normalizedText){const bar=el('div',undefined,'progress'),fill=el('div');fill.style.width=Math.min(100,progress.completed?100:100*progress.characterOffset/item.normalizedText.length)+'%';bar.append(fill);content.append(bar);}
     const actions=el('div',undefined,'actions');actions.append(button('Read',()=>{if(!item.normalizedText){notice('Open Yomu on your phone to finish importing this item.');return;}$('readerTitle').textContent=item.title;$('readerText').textContent=item.normalizedText;$('reader').showModal();}));
     actions.append(button(progress?.completed?'Mark unread':'Mark read',async()=>{const completed=!progress?.completed;const now=Date.now();const changes=[change('reading_items',item.id,{...item,inToRead:!completed,archived:false,updatedAt:now}),change('reading_progress',item.id,{...(progress||{itemId:item.id,sentenceIndex:0,characterOffset:0,playbackSpeed:1,lastListenedAt:0}),completed})];if(completed){if(lookup('up_next',item.id))changes.push(change('up_next',item.id,null));const id=crypto.randomUUID();changes.push(change('read_history',id,{id,itemId:item.id,completedAt:now}));}else records('read_history').filter(h=>h.itemId===item.id).forEach(h=>changes.push(change('read_history',h.id,null)));await mutate(changes);}));
@@ -50,3 +50,19 @@ $('newPlaylist').onclick=()=>{const name=prompt('Playlist name');if(name?.trim()
 render();if(key)refresh();else $('pair').showModal();setInterval(()=>{if(key&&!document.hidden&&!$('reader').open)refresh();},15000);
 
 
+
+function sourceIcon(item){
+  const mark=el('div',item.sourceType==='url'?'':item.sourceType.toUpperCase(),'filemark');
+  if(item.sourceType!=='url')return mark;
+  try{
+    const url=new URL(item.sourceUrl);
+    if(!['https:','http:'].includes(url.protocol))throw Error();
+    mark.classList.add('site-icon');mark.textContent=url.hostname.replace(/^www\./,'').slice(0,1).toUpperCase();
+    const img=el('img');img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';
+    img.onload=()=>mark.replaceChildren(img);
+    img.onerror=()=>{img.onload=null;img.onerror=null;};
+    img.src='https://'+url.host+'/favicon.ico';
+    mark.title=url.hostname;
+  }catch{mark.textContent='↗';}
+  return mark;
+}
