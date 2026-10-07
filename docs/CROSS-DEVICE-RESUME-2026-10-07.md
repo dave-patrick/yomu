@@ -2,7 +2,9 @@
 
 Implementation: website and Android alpha18. Website release can ship alongside
 older phone versions; alpha17 and earlier ignore the new record kinds. Alpha18
-installation and physical device acceptance remain pending the owner's go-ahead.
+was installed in place over local Wi-Fi on 2026-10-07; version and launch verified.
+Future builds are authorized for automatic installation when the phone is reachable
+on local Wi-Fi. Physical bidirectional acceptance remains pending.
 
 ## Experience
 
@@ -56,7 +58,7 @@ An open article can continue while offline; offline first-load/PWA is not includ
   concurrent-position choice; library defaults across reload; mobile controls.
 - Migration SQL verified against all exported Room v5 table schemas with existing
   listening values preserved. Instrumented migration test added; physical Android
-  run, TalkBack, and bidirectional phone acceptance remain pending installation.
+  run, TalkBack, and bidirectional phone acceptance remain pending device testing.
 
 Manual acceptance after install: sync both devices; scroll the phone reader with
 Follow narration off and resume on the website; scroll the website, sync the phone,
