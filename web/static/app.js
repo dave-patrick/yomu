@@ -328,7 +328,8 @@ function fillRow(content, item, dates) {
   add('Delete saved item', async (fresh,epoch) => {
     if (!confirm('Permanently delete “' + fresh.title + '” from your synced library? This also removes its queue, playlist, progress, and history entries. Archive it instead if you want to keep it.')) return;
     await mutate([change('reading_items', item.id, null), ...['up_next','reading_progress','playlist_memberships','read_history'].flatMap(kind =>
-      (snapshot.records || []).filter(r => r.kind === kind && r.data?.itemId === item.id).map(r => change(kind, r.id, null)))], 'Saved item deleted.', epoch);
+      (snapshot.records || []).filter(r => r.kind === kind && r.data?.itemId === item.id).map(r => change(kind, r.id, null))),
+      ...(lookup('reading_cursors',item.id) ? [change('reading_cursors',item.id,null)] : [])], 'Saved item deleted.', epoch);
   }, false, 'menu-item destructive');
   more.append(summary,panel);
   more.addEventListener('toggle', () => {

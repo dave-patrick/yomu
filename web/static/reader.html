@@ -16,17 +16,28 @@
       <label for="readerWidth">Column width</label><select id="readerWidth"><option value="narrow">Narrow</option><option value="comfortable">Comfortable</option><option value="wide">Wide</option></select>
       <label for="siteTheme">Theme</label><select id="siteTheme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
       <button id="resetReading" class="secondary">Reset reading settings</button>
-      <p>Saved for this browser.</p>
+      <label><input id="localReadingOverride" type="checkbox" checked> Override library defaults on this browser</label>
+      <button id="shareReading" class="secondary">Use these as library defaults</button>
+      <p>Font, size, and spacing can follow library defaults. Theme and width stay on this browser.</p>
     </div>
   </details>
 </div>
 <main class="reader-main">
   <p id="readerNotice" class="reader-notice" role="status">Loading your article…</p>
   <div id="readerRecovery" hidden><button id="retryReader">Try again</button> <a href="/settings.html">Connection settings</a></div>
+  <section id="resumeControls" class="resume-controls" hidden aria-label="Reading position">
+    <p id="resumeMessage"></p>
+    <button id="resumeReading" class="secondary" hidden>Resume reading</button>
+    <button id="resumeListening" class="secondary" hidden>Go to listening position</button>
+    <button id="keepReadingPosition" class="secondary" hidden>Keep this position</button>
+    <button id="useRemotePosition" class="secondary" hidden>Use synced position</button>
+  </section>
+  <p id="positionStatus" class="hint" role="status" aria-live="polite"></p>
   <article id="readerArticle" tabindex="-1" hidden aria-labelledby="readerTitle">
     <header class="article-heading"><h1 id="readerTitle"></h1><div class="article-meta"><span id="readerMeta"></span><a id="readerSource" target="_blank" rel="noopener noreferrer" hidden>Open original</a></div></header>
     <div id="readerText" class="article-text"></div>
     <footer class="reader-end"><p>End of article</p><a id="endLibrary" href="/">Back to library</a></footer>
   </article>
 </main>
+<script src="/resume.js" defer></script>
 </body></html>

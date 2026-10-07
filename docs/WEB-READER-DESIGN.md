@@ -2,8 +2,10 @@
 
 Status: the dedicated web reader shipped on 2026-10-07 with stable URLs,
 selectable paragraphs, source access, browser-local typography/theme preferences,
-and library return restoration. Shared reading resume, shared defaults, and audio
-remain planned. The architecture below describes those later phases as well.
+and library return restoration. Separate reading resume and shared defaults are
+implemented in the website and alpha18, with installation/device acceptance
+pending. Audio remains planned. See [Resume delivery](CROSS-DEVICE-RESUME-2026-10-07.md).
+The architecture below describes later audio phases as well.
 
 ## Goal
 

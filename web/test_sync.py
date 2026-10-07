@@ -8,6 +8,43 @@ from fastapi.testclient import TestClient
 from app import app
 
 class SyncTests(unittest.TestCase):
+    def test_reading_cursor_is_atomic_and_separate_from_listening(self):
+        import json, hashlib
+        def push(kind, ident, data, base=None):
+            return self.client.post('/api/sync',json={'client':'resume-test','changes':[{'kind':kind,'id':ident,'data':data,'base':base}]})
+        item_id=self.client.post('/api/articles',json={'url':'https://example.com/resume-test'}).json()['id']
+        anchor=json.dumps({'version':1,'textHash':hashlib.sha256(b'hello world').hexdigest(),'offset':0,'quote':'hello world','prefix':''})
+        cursor={'itemId':item_id,'anchor':anchor,'updatedAt':1,'deviceLabel':'Phone'}
+        self.assertEqual(push('reading_cursors',item_id,cursor).status_code,200)
+        remote={**cursor,'anchor':anchor.replace('"offset": 0','"offset": 6'),'updatedAt':2,'deviceLabel':'Website'}
+        push('reading_cursors',item_id,remote,cursor)
+        stale={**cursor,'anchor':anchor.replace('"offset": 0','"offset": 3'),'updatedAt':3}
+        result=push('reading_cursors',item_id,stale,cursor).json()
+        self.assertTrue(result['conflicts'])
+        self.assertEqual(next(r['data'] for r in result['records'] if r['kind']=='reading_cursors' and r['id']==item_id)['anchor'],remote['anchor'])
+        self.assertFalse(any(r['kind']=='reading_progress' and r['id']==item_id for r in result['records']))
+        resolved=push('reading_cursors',item_id,stale,next(r['data'] for r in result['records'] if r['kind']=='reading_cursors' and r['id']==item_id)).json()
+        self.assertFalse(resolved['conflicts'])
+        replay=push('reading_cursors',item_id,stale,cursor).json()
+        self.assertEqual(replay['revision'],resolved['revision'])
+        # An old client writing only its known listening kind leaves new cursors intact.
+        listening={'itemId':item_id,'sentenceIndex':2,'characterOffset':6,'playbackSpeed':1,'completed':False,'lastListenedAt':4}
+        old_client=push('reading_progress',item_id,listening).json()
+        self.assertEqual(next(r['data'] for r in old_client['records'] if r['kind']=='reading_cursors' and r['id']==item_id)['anchor'],stale['anchor'])
+        parent=next(r['data'] for r in old_client['records'] if r['kind']=='reading_items' and r['id']==item_id)
+        deleted=push('reading_items',item_id,None,parent).json()
+        self.assertIsNone(next(r['data'] for r in deleted['records'] if r['kind']=='reading_cursors' and r['id']==item_id))
+        replay=push('reading_cursors',item_id,stale).json()
+        self.assertIsNone(next(r['data'] for r in replay['records'] if r['kind']=='reading_cursors' and r['id']==item_id))
+
+    def test_reader_defaults_version_and_anchor_validation(self):
+        defaults={'id':'global','font':'serif','size':20,'spacing':1.7,'schemaVersion':1}
+        for data,code in [(defaults,200),({**defaults,'schemaVersion':2},400),({**defaults,'size':999},400)]:
+            response=self.client.post('/api/sync',json={'changes':[{'kind':'reader_defaults','id':'global','data':data,'base':None}]})
+            self.assertEqual(response.status_code,code)
+        response=self.client.post('/api/sync',json={'changes':[{'kind':'reading_cursors','id':'bad','data':{'itemId':'bad','anchor':'{}','updatedAt':0,'deviceLabel':'Phone'},'base':None}]})
+        self.assertEqual(response.status_code,400)
+
     def setUp(self):
         self.client = TestClient(app)
         self.client.headers['Authorization'] = 'Bearer ' + os.environ['YOMU_ACCESS_TOKEN']

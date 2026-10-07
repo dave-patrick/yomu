@@ -63,6 +63,23 @@ data class QueueEntryEntity(
     val addedAt: Long,
 )
 
+@Entity(tableName = "reading_cursors")
+data class ReadingCursorEntity(
+    @PrimaryKey val itemId: String,
+    val anchor: String,
+    val updatedAt: Long,
+    val deviceLabel: String,
+)
+
+@Entity(tableName = "reader_defaults")
+data class ReaderDefaultsEntity(
+    @PrimaryKey val id: String = "global",
+    val font: String = "serif",
+    val size: Int = 20,
+    val spacing: Double = 1.7,
+    val schemaVersion: Int = 1,
+)
+
 @Entity(tableName = "reading_progress")
 data class ReadingProgressEntity(
     @PrimaryKey val itemId: String,
@@ -133,6 +150,9 @@ interface LibraryDao {
     @Query("DELETE FROM reading_items WHERE id = :itemId")
     suspend fun deleteItem(itemId: String)
 
+    @Query("DELETE FROM reading_cursors WHERE itemId = :itemId")
+    suspend fun deleteReadingCursor(itemId: String)
+
     @Query("SELECT * FROM up_next ORDER BY position ASC")
     fun observeUpNext(): Flow<List<QueueEntryEntity>>
 
@@ -168,6 +188,18 @@ interface LibraryDao {
 
     @Query("SELECT * FROM reading_progress WHERE itemId = :itemId LIMIT 1")
     suspend fun getProgress(itemId: String): ReadingProgressEntity?
+
+    @Query("SELECT * FROM reading_cursors WHERE itemId = :itemId LIMIT 1")
+    fun observeReadingCursor(itemId: String): Flow<ReadingCursorEntity?>
+
+    @Upsert
+    suspend fun upsertReadingCursor(cursor: ReadingCursorEntity)
+
+    @Query("SELECT * FROM reader_defaults WHERE id = 'global' LIMIT 1")
+    fun observeReaderDefaults(): Flow<ReaderDefaultsEntity?>
+
+    @Upsert
+    suspend fun upsertReaderDefaults(defaults: ReaderDefaultsEntity)
 
     @Upsert
     suspend fun upsertProgress(progress: ReadingProgressEntity)
@@ -252,10 +284,12 @@ data class SyncBaselineEntity(@PrimaryKey val key: String, val payload: String)
         PlaylistMembershipEntity::class,
         QueueEntryEntity::class,
         ReadingProgressEntity::class,
+        ReadingCursorEntity::class,
+        ReaderDefaultsEntity::class,
         ReadHistoryEntity::class,
         SyncBaselineEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -283,12 +317,19 @@ abstract class LibraryDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS reading_cursors (itemId TEXT NOT NULL PRIMARY KEY, anchor TEXT NOT NULL, updatedAt INTEGER NOT NULL, deviceLabel TEXT NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS reader_defaults (id TEXT NOT NULL PRIMARY KEY, font TEXT NOT NULL, size INTEGER NOT NULL, spacing REAL NOT NULL, schemaVersion INTEGER NOT NULL)")
+            }
+        }
+
         fun get(context: Context): LibraryDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 LibraryDatabase::class.java,
                 DATABASE_NAME,
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
         }
 
         const val DATABASE_NAME = "yomu-library.db"

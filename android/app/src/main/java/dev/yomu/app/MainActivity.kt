@@ -124,6 +124,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -1841,13 +1844,32 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
     val progress by vm.progressFor(item.id).collectAsStateWithLifecycle(initialValue = null)
     val sentences = remember(item.normalizedText) { readingSentences(item.normalizedText) }
     val readingListState = rememberLazyListState()
+    val readerScope = rememberCoroutineScope()
+    val readingCursor by vm.readingCursorFor(item.id).collectAsStateWithLifecycle(initialValue = null)
+    val sharedDefaults by vm.sharedReaderDefaults.collectAsStateWithLifecycle()
+    val resumeConflicts by vm.resumeConflicts.collectAsStateWithLifecycle()
+    val cursorConflict = resumeConflicts["reading_cursors/${item.id}"]
+    val defaultsConflict = resumeConflicts["reader_defaults/global"]
+    val offsets = remember(item.normalizedText, sentences) { dev.yomu.app.data.ReadingAnchor.offsets(item.normalizedText, sentences) }
+    var followNarration by rememberSaveable(item.id) { mutableStateOf(playback?.itemId == item.id && playback?.isPlaying == true) }
+    val readerSyncPrefs = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("reader_sync_settings", android.content.Context.MODE_PRIVATE)
+    var localOverride by rememberSaveable { mutableStateOf(readerSyncPrefs.getBoolean("local_override", true)) }
+    val sharedFont = when (sharedDefaults?.font) { "mono" -> "Monospace"; "sans" -> "Default app font"; else -> "Serif" }
+    val effectiveFont = if (!localOverride && sharedDefaults != null) sharedFont else readerFont
+    val effectiveScale = if (!localOverride && sharedDefaults != null) (sharedDefaults!!.size / 16f) else readerTextScale
+    LaunchedEffect(item.id, followNarration, cursorConflict) {
+        androidx.compose.runtime.snapshotFlow { readingListState.firstVisibleItemIndex }
+            .distinctUntilChanged().drop(1).debounce(800).collect { index ->
+                if (!followNarration && cursorConflict == null && index in offsets.indices) vm.saveReadingCursor(item, offsets[index])
+            }
+    }
     var positionDraft by remember(item.id) { mutableFloatStateOf(0f) }
     LaunchedEffect(progress?.sentenceIndex, sentences.size) {
         positionDraft = if (sentences.size > 1) (progress?.sentenceIndex ?: 0).toFloat() / (sentences.size - 1) else 0f
     }
     val current = progress?.sentenceIndex ?: -1
-    LaunchedEffect(current, sentences.size) {
-        if (current in sentences.indices) {
+    LaunchedEffect(current, sentences.size, followNarration) {
+        if (followNarration && playback?.itemId == item.id && current in sentences.indices) {
             val offset = -(readingListState.layoutInfo.viewportSize.height / 3)
             readingListState.animateScrollToItem(current, scrollOffset = offset)
         }
@@ -1859,13 +1881,42 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
     val elapsedEstimate = durationAtSpeed * heardWords / totalWords
     val remainingEstimate = (durationAtSpeed - elapsedEstimate).coerceAtLeast(0)
     Column(modifier.fillMaxSize().padding(horizontal = 21.dp)) {
+        var resumeOptions by rememberSaveable { mutableStateOf(false) }
+        TextButton(onClick = { resumeOptions = !resumeOptions }) { Text(if (resumeOptions) "Hide reading & resume options" else if (cursorConflict != null || defaultsConflict != null) "Review resume conflict" else "Reading & resume options") }
+        if (resumeOptions) {
+            val savedOffset = readingCursor?.let { dev.yomu.app.data.ReadingAnchor.resolve(item.normalizedText, it.anchor) }
+            if (readingCursor != null) {
+                Text(if (savedOffset == null) "Saved reading position could not be matched after the text changed." else "Reading position from ${readingCursor!!.deviceLabel}", style = MaterialTheme.typography.bodySmall)
+                TextButton(enabled = savedOffset != null, onClick = {
+                    followNarration = false
+                    readerScope.launch { readingListState.scrollToItem(offsets.indexOfLast { it <= (savedOffset ?: 0) }.coerceAtLeast(0)) }
+                }) { Text("Resume reading") }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Follow narration", Modifier.weight(1f)); Switch(checked = followNarration, onCheckedChange = { followNarration = it })
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Override library reading defaults", Modifier.weight(1f)); Switch(checked = localOverride, onCheckedChange = { localOverride = it; readerSyncPrefs.edit().putBoolean("local_override", it).apply() })
+            }
+            TextButton(onClick = {
+                val font = when (readerFont) { "Serif", "Lora", "Literata", "Source Serif 4" -> "serif"; "Monospace" -> "mono"; else -> "sans" }
+                val size = listOf(16,18,20,22,24,28,32).minBy { kotlin.math.abs(it - 16 * readerTextScale) }
+                val spacing = when (readerSpacing) { "Compact" -> 1.4; "Relaxed" -> 2.0; else -> 1.7 }
+                vm.shareReaderDefaults(font,size,spacing)
+            }) { Text("Use phone settings as library defaults") }
+            Text("Shared fonts use Serif, Sans serif, or Monospace. Theme stays on this phone.", style = MaterialTheme.typography.labelSmall)
+            for ((conflictKey, conflictValue) in listOf("reading_cursors/${item.id}" to cursorConflict, "reader_defaults/global" to defaultsConflict)) if (conflictValue != null) {
+                Text("Another device changed ${if (conflictKey.startsWith("reading_cursors")) "your reading position" else "reading defaults"}. Choose which to keep.", style = MaterialTheme.typography.bodySmall)
+                Row { TextButton(onClick = { vm.resolveResumeConflict(conflictKey, true) }) { Text("Keep phone version") }; TextButton(onClick = { vm.resolveResumeConflict(conflictKey, false) }) { Text("Use synced version") } }
+            }
+        }
         LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), state = readingListState,
             contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 10.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(sentences.size) { index ->
                 val active = index == current
                 val baseStyle = MaterialTheme.typography.bodyLarge
-                val style = baseStyle.copy(fontFamily = readerFontFamily(readerFont))
-                val lineMultiplier = when (readerSpacing) { "Compact" -> 1.25f; "Relaxed" -> 1.75f; else -> 1.5f }
+                val style = baseStyle.copy(fontFamily = readerFontFamily(effectiveFont))
+                val lineMultiplier = if (!localOverride && sharedDefaults != null) sharedDefaults!!.spacing.toFloat() else when (readerSpacing) { "Compact" -> 1.25f; "Relaxed" -> 1.75f; else -> 1.5f }
                 val hasBackgroundHighlight = active && readerHighlight == "Background"
                 Surface(
                     onClick = { vm.seekSentence(index) },
@@ -1874,8 +1925,8 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
                 ) {
                     Text(sentences[index], Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp),
                         style = style.copy(
-                            fontSize = style.fontSize * readerTextScale,
-                            lineHeight = style.fontSize * readerTextScale * lineMultiplier,
+                            fontSize = style.fontSize * effectiveScale,
+                            lineHeight = style.fontSize * effectiveScale * lineMultiplier,
                         ),
                         color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                 }

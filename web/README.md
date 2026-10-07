@@ -87,4 +87,7 @@ from the library; returning restores the view, search, scroll position, and focu
 item in the same tab. Font, size, spacing, and width are saved for this browser;
 theme uses the existing System/Light/Dark preference. Text is selectable, source
 links are available, and opening or scrolling does not mark an item read or change
-the phone's listening position. Shared resume and browser audio remain planned.
+the phone's listening position. Separate reading cursors, offline position retry,
+conflict choices, and shared reader defaults are implemented for alpha18 pairing.
+See [Resume delivery](../docs/CROSS-DEVICE-RESUME-2026-10-07.md) for installation
+and device acceptance status. Browser audio remains planned.

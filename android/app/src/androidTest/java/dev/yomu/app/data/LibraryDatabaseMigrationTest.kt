@@ -10,6 +10,22 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class LibraryDatabaseMigrationTest {
+    @Test fun readingCursorMigrationPreservesListeningAndLibrary() {
+        val name = "yomu-reading-cursor-migration.db"
+        helper.createDatabase(name, 4).apply {
+            execSQL("INSERT INTO reading_items (id,title,sourceType,normalizedText,importState,inToRead,importedAt,updatedAt,estimatedSecondsAtOneX,contentVersion,manualOrder,archived) VALUES ('saved','Keep me','txt','Original text','ready',1,123,123,60,1,123,0)")
+            execSQL("INSERT INTO reading_progress (itemId,sentenceIndex,characterOffset,playbackSpeed,completed,lastListenedAt) VALUES ('saved',2,12,1.0,0,123)")
+            close()
+        }
+        helper.runMigrationsAndValidate(name, 5, true, LibraryDatabase.MIGRATION_4_5).use { db ->
+            db.query("SELECT sentenceIndex,characterOffset FROM reading_progress WHERE itemId='saved'").use { cursor ->
+                assertEquals(true,cursor.moveToFirst());assertEquals(2,cursor.getInt(0));assertEquals(12,cursor.getInt(1))
+            }
+            db.execSQL("INSERT INTO reader_defaults VALUES ('global','serif',20,1.7,1)")
+            db.execSQL("INSERT INTO reading_cursors VALUES ('saved','{}',123,'Phone')")
+        }
+    }
+
     @get:Rule val helper = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), LibraryDatabase::class.java)
 
     @Test fun migrationAddsManualOrderAndPreservesExistingLibraryItems() {

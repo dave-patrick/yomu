@@ -45,6 +45,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.cancel
 import java.io.File
 import kotlin.coroutines.coroutineContext
@@ -270,6 +271,42 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
     fun closeReader() { readerGeneration++; readerSelection.close() }
     fun progressFor(itemId: String): Flow<ReadingProgressEntity?> = repository.dao.observeProgress(itemId)
+    fun readingCursorFor(itemId: String) = repository.dao.observeReadingCursor(itemId)
+    val sharedReaderDefaults = repository.dao.observeReaderDefaults().stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val resumeConflicts = kotlinx.coroutines.flow.callbackFlow<Map<String, String>> {
+        val state = app.getSharedPreferences("sync_state", android.content.Context.MODE_PRIVATE)
+        fun publish() { trySend(state.all.filterKeys { it.startsWith("resume_conflict:") }.mapKeys { it.key.removePrefix("resume_conflict:") }.mapValues { it.value.toString() }) }
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key -> if (key?.startsWith("resume_conflict:") == true) publish() }
+        state.registerOnSharedPreferenceChangeListener(listener); publish()
+        awaitClose { state.unregisterOnSharedPreferenceChangeListener(listener) }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+    fun resolveResumeConflict(key: String, keepLocal: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val state = app.getSharedPreferences("sync_state", android.content.Context.MODE_PRIVATE)
+            val raw = state.getString("resume_conflict:$key", null) ?: return@launch
+            if (keepLocal) {
+                val row = JSONObject(raw)
+                if (key.startsWith("reading_cursors/")) {
+                    val item = repository.dao.getItem(row.getString("itemId")) ?: return@launch
+                    val offset = dev.yomu.app.data.ReadingAnchor.resolve(item.normalizedText,row.getString("anchor")) ?: return@launch
+                    repository.dao.upsertReadingCursor(dev.yomu.app.data.ReadingCursorEntity(item.id,dev.yomu.app.data.ReadingAnchor.create(item.normalizedText,offset),System.currentTimeMillis(),"Phone"))
+                } else repository.dao.upsertReaderDefaults(dev.yomu.app.data.ReaderDefaultsEntity(font=row.getString("font"),size=row.getInt("size"),spacing=row.getDouble("spacing")))
+            }
+            state.edit().remove("resume_conflict:$key").commit()
+        }
+    }
+    fun saveReadingCursor(item: ReadingItemEntity, offset: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (repository.dao.getItem(item.id)?.normalizedText != item.normalizedText) return@launch
+            repository.dao.upsertReadingCursor(dev.yomu.app.data.ReadingCursorEntity(item.id,
+                dev.yomu.app.data.ReadingAnchor.create(item.normalizedText, offset), System.currentTimeMillis(), "Phone"))
+        }
+    }
+    fun shareReaderDefaults(font: String, size: Int, spacing: Double) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.dao.upsertReaderDefaults(dev.yomu.app.data.ReaderDefaultsEntity(font = font, size = size, spacing = spacing))
+        }
+    }
     fun togglePlayback() = playbackControl(YomuPlaybackService.ACTION_TOGGLE)
     fun previousSentence() = playbackControl(YomuPlaybackService.ACTION_PREVIOUS)
     fun nextSentence() = playbackControl(YomuPlaybackService.ACTION_NEXT)

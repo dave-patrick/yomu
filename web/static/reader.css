@@ -11,6 +11,10 @@ body.reader-page{display:block;min-height:100vh}
 .reader-controls select{width:100%;min-height:44px}
 .reader-controls button{width:100%;margin-top:20px}
 .reader-controls p{font-size:13px;color:var(--muted);margin-bottom:0}
+.reader-controls input[type=checkbox]{width:auto;min-height:auto;margin-right:6px}
+.resume-controls{padding-bottom:24px;margin-bottom:24px;border-bottom:1px solid var(--line)}
+.resume-controls p{color:var(--muted);line-height:1.5}
+.resume-controls button{margin:4px 8px 4px 0}
 main.reader-main{max-width:var(--reader-width,44rem);padding:56px 24px 80px;margin-inline:auto;width:100%}
 .article-heading{display:block;margin-bottom:36px}
 .article-heading h1{font-size:clamp(28px,4vw,42px);line-height:1.18;letter-spacing:-.025em;margin:0 0 20px;overflow-wrap:anywhere}

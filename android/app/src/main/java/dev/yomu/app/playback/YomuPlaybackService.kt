@@ -65,6 +65,7 @@ class YomuPlaybackService : MediaLibraryService() {
     private var itemId: String? = null
     private var title: String = "Yomu"
     private var sentences: List<String> = emptyList()
+    private var sourceText = ""
     private var sentenceIndex = 0
     private lateinit var playNowResume: PlayNowResumeState
     private var isGenerating = false
@@ -331,7 +332,8 @@ class YomuPlaybackService : MediaLibraryService() {
             title = item.title
             localOnly = false
             offlineNoticePlayed = false
-            sentences = splitSentences(item.normalizedText)
+            sourceText = item.normalizedText
+            sentences = splitSentences(sourceText)
             sentenceIndex = startAt.coerceIn(0, (sentences.size - 1).coerceAtLeast(0))
             dao.upsertProgress(dev.yomu.app.data.ReadingProgressEntity(itemId = id, sentenceIndex = sentenceIndex, characterOffset = characterOffset(sentenceIndex), lastListenedAt = System.currentTimeMillis()))
             publishSnapshot()
@@ -518,14 +520,14 @@ class YomuPlaybackService : MediaLibraryService() {
         val savedIndex = prefs.getInt("sentence", 0)
         scope.launch {
             val item = withContext(Dispatchers.IO) { dao.getItem(savedId) } ?: return@launch
-            itemId = item.id; title = item.title; sentences = splitSentences(item.normalizedText)
+            itemId = item.id; title = item.title; sourceText = item.normalizedText; sentences = splitSentences(sourceText)
             sentenceIndex = savedIndex.coerceIn(0, (sentences.size - 1).coerceAtLeast(0))
             publishSnapshot()
             // Restore the listening position paused. Resume requires an explicit user play action.
         }
     }
 
-    private fun characterOffset(index: Int): Int = sentences.take(index.coerceAtLeast(0)).sumOf(String::length)
+    private fun characterOffset(index: Int): Int = dev.yomu.app.data.ReadingAnchor.offsets(sourceText, sentences).getOrNull(index) ?: sourceText.length
 
     private fun publishSnapshot() {
         val id = itemId ?: return
@@ -741,6 +743,7 @@ class YomuPlaybackService : MediaLibraryService() {
                     itemId = selected.id
                     title = selected.title
                     sentences = selectedSentences
+                    sourceText = selected.normalizedText
                     sentenceIndex = selectedIndex
                     offlineNoticePlayed = false
                     playbackSpeed = getSharedPreferences("speech_preferences", MODE_PRIVATE)
@@ -801,6 +804,7 @@ class YomuPlaybackService : MediaLibraryService() {
                     itemId = item.id
                     title = item.title
                     sentences = restoredSentences
+                    sourceText = item.normalizedText
                     sentenceIndex = restoredIndex
                     playbackSpeed = getSharedPreferences("speech_preferences", MODE_PRIVATE)
                         .getFloat("playback_speed", 1f).coerceIn(.7f, 2f)

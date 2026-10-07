@@ -122,6 +122,7 @@ class LibraryRepository(private val database: LibraryDatabase) {
     suspend fun clearHistory() = dao.clearHistory()
 
     suspend fun deleteItem(itemId: String) = database.withTransaction {
+        dao.deleteReadingCursor(itemId)
         dao.removeItemFromAllPlaylists(itemId)
         dao.removeItemFromHistory(itemId)
         dao.deleteQueueItem(itemId)

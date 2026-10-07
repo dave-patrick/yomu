@@ -21,7 +21,25 @@
     catch { return '/'; }
   }
   function paragraphs(text) { return String(text || '').trim().split(/\n\s*\n|\r?\n/).filter(part => part.trim()); }
-  const api = {defaults, fonts, widths, preferences, sourceUrl, libraryUrl, paragraphs};
+  async function fingerprint(text) {
+    const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return [...new Uint8Array(bytes)].map(value => value.toString(16).padStart(2,'0')).join('');
+  }
+  function anchor(text, offset, textHash) {
+    offset = Math.max(0,Math.min(text.length,offset));
+    return JSON.stringify({version:1,textHash,offset,quote:text.slice(offset,offset+80),prefix:text.slice(Math.max(0,offset-32),offset)});
+  }
+  function resolveAnchor(text, raw, textHash) {
+    try {
+      const value = JSON.parse(raw);
+      if (value.version !== 1 || !Number.isInteger(value.offset)) return null;
+      if (value.textHash === textHash) return value.offset >= 0 && value.offset <= text.length ? value.offset : null;
+      if (!value.quote) return null;
+      const needle = value.prefix + value.quote, found = text.indexOf(needle);
+      return found >= 0 && text.indexOf(needle,found+1) < 0 ? found + value.prefix.length : null;
+    } catch { return null; }
+  }
+  const api = {defaults, fonts, widths, preferences, sourceUrl, libraryUrl, paragraphs, fingerprint, anchor, resolveAnchor};
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.YomuReader = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

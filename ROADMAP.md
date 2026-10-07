@@ -31,8 +31,13 @@ and return to the previous library view/search/scroll/focus. Opening and scrolli
 do not publish listening progress or mark content completed. Unit and isolated
 Chrome desktop/mobile checks passed; cross-device resume remains Wave 3.
 
-Remaining: phone Read quietly
-and follow controls, broader large-text/TalkBack coverage, and playlist feature
+Implemented 2026-10-07, pending alpha18 installation/device acceptance: separate
+cross-device reading cursors, explicit Resume reading, offline browser position
+retry, conflict choices, shared font/size/spacing defaults with device overrides,
+and phone Follow narration. See [Resume delivery](docs/CROSS-DEVICE-RESUME-2026-10-07.md).
+
+Remaining: phone Read quietly entry point and selectable text,
+broader large-text/TalkBack coverage, and playlist feature
 parity. The grouped checklists below remain open until their full criteria pass.
 
 Validation and implementation details: [Usability pass](docs/USABILITY-PASS-2026-10-06.md).
@@ -75,6 +80,8 @@ while MP3 generation is an explicit export.
    (R15). Reader article-transition fixes are delivered; this feature remains open.
 4. **Cross-device reading resume (P1):** canonical text anchors, separate reading
    and listening positions, offline recovery, and shared reader defaults (R22/Wave 3).
+   Implementation is built and tested; alpha18 installation and physical
+   bidirectional acceptance remain pending.
 5. **Playlist management and capture (P1):** rename/delete/counts/reorder,
    visible membership, and faster/recoverable extension destinations (R17/R21).
 
@@ -285,6 +292,13 @@ scaling, and navigation work; opening content never marks it finished automatica
 Design reference: [Web reader and settings design](docs/WEB-READER-DESIGN.md).
 
 ### Wave 3 — Resume and portable reader defaults
+
+Implementation delivered 2026-10-07: separate reading_cursors and reader_defaults,
+original-text anchors with safe remapping, offline browser queue/retry, explicit
+conflict decisions, phone Follow narration, and portable reading defaults with
+local overrides. Alpha18 is built. Installation and physical bidirectional,
+one-way, TalkBack, and multi-tab acceptance remain open; grouped checks below
+are gates rather than assertions that the code has not been implemented.
 
 - [ ] Capture web reading position using sentence/character anchors and text revision,
   not pixels. Debounce writes and retain unsent state locally.

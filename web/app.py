@@ -28,6 +28,8 @@ TABLES = {
     'up_next': {'itemId', 'position', 'addedAt'},
     'reading_progress': {'itemId', 'sentenceIndex', 'characterOffset', 'playbackSpeed', 'completed', 'lastListenedAt'},
     'read_history': {'id', 'itemId', 'completedAt'},
+    'reading_cursors': {'itemId', 'anchor', 'updatedAt', 'deviceLabel'},
+    'reader_defaults': {'id', 'font', 'size', 'spacing', 'schemaVersion'},
 }
 LOCK = threading.RLock()
 
@@ -92,9 +94,22 @@ def validate(kind, ident, data):
             raise HTTPException(400, 'Unsupported library fields.')
         if len(json.dumps(data)) > 4 * 1024 * 1024:
             raise HTTPException(413, 'Reading item is too large.')
-        expected = f"{data.get('playlistId')}:{data.get('itemId')}" if kind == 'playlist_memberships' else str(data.get('id') if kind in ('reading_items','playlists','read_history') else data.get('itemId'))
+        expected = f"{data.get('playlistId')}:{data.get('itemId')}" if kind == 'playlist_memberships' else str(data.get('id') if kind in ('reading_items','playlists','read_history','reader_defaults') else data.get('itemId'))
         if expected != ident:
             raise HTTPException(400, 'Record identity does not match its content.')
+        if kind == 'reading_cursors':
+            try:
+                anchor = json.loads(data['anchor'])
+                assert type(anchor['version']) is int and anchor['version'] == 1 and isinstance(anchor['offset'], int) and not isinstance(anchor['offset'], bool) and 0 <= anchor['offset'] <= 4_000_000
+                assert isinstance(anchor['textHash'], str) and len(anchor['textHash']) == 64 and all(c in '0123456789abcdef' for c in anchor['textHash'])
+                assert isinstance(anchor['quote'], str) and len(anchor['quote']) <= 80
+                assert isinstance(anchor['prefix'], str) and len(anchor['prefix']) <= 32
+                assert isinstance(data['updatedAt'], int) and not isinstance(data['updatedAt'], bool) and data['updatedAt'] >= 0
+                assert isinstance(data['deviceLabel'], str) and len(data['deviceLabel']) <= 80
+            except (ValueError, TypeError, KeyError, AssertionError):
+                raise HTTPException(400, 'Invalid reading anchor.')
+        if kind == 'reader_defaults' and (ident != 'global' or type(data.get('schemaVersion')) is not int or data.get('schemaVersion') != 1 or data.get('font') not in ('serif','sans','mono') or data.get('size') not in (16,18,20,22,24,28,32) or data.get('spacing') not in (1.4,1.7,2)):
+            raise HTTPException(400, 'Unsupported reader defaults.')
 
 @app.get('/health')
 def health():

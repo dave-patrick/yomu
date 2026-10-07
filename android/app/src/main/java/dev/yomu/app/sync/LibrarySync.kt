@@ -27,10 +27,10 @@ class LibrarySync(private val context: Context) {
     private val prefs = context.getSharedPreferences("sync_state", Context.MODE_PRIVATE)
     private val vault = SyncVault(context)
     private val client = OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).followRedirects(false).build()
-    private val kinds = listOf("reading_items", "playlists", "playlist_memberships", "up_next", "reading_progress", "read_history")
+    private val kinds = listOf("reading_items", "playlists", "playlist_memberships", "up_next", "reading_progress", "read_history", "reading_cursors", "reader_defaults")
     private fun id(kind: String, row: JSONObject) = when(kind) {
         "playlist_memberships" -> "${row.getString("playlistId")}:${row.getString("itemId")}"
-        "reading_items", "playlists", "read_history" -> row.getString("id")
+        "reading_items", "playlists", "read_history", "reader_defaults" -> row.getString("id")
         else -> row.getString("itemId")
     }
     private fun equal(a: Any?, b: Any?): Boolean = canonical(a) == canonical(b)
@@ -164,6 +164,12 @@ class LibrarySync(private val context: Context) {
                 val remote = record.optJSONObject("data")
                 val now = current[key]
                 val before = sent[key]
+                if (kind in setOf("reading_cursors", "reader_defaults") && now != null) {
+                    val conflicts = response.optJSONArray("conflicts") ?: JSONArray()
+                    if ((0 until conflicts.length()).any { conflicts.optString(it).startsWith("$key/") || conflicts.optString(it).startsWith("$key:") }) {
+                        prefs.edit().putString("resume_conflict:$key", now.toString()).commit()
+                    }
+                }
                 if(remote == null) {
                     if(equal(now,before)) {
                         if(kind == "up_next") queue.remove(key) else delete(kind,ident)
@@ -222,12 +228,12 @@ class LibrarySync(private val context: Context) {
     private fun delete(kind: String,ident: String) {
         val (where,args) = identity(kind,ident)
         database.openHelper.writableDatabase.execSQL("DELETE FROM $kind WHERE $where",args)
-        if(kind == "reading_items") for(table in listOf("up_next","playlist_memberships","read_history","reading_progress"))
+        if(kind == "reading_items") for(table in listOf("up_next","playlist_memberships","read_history","reading_progress","reading_cursors"))
             database.openHelper.writableDatabase.execSQL("DELETE FROM $table WHERE itemId=?",arrayOf(ident))
     }
     private fun identity(kind: String,ident: String): Pair<String,Array<Any?>> = when(kind) {
         "playlist_memberships" -> "playlistId=? AND itemId=?" to arrayOf(ident.substringBefore(':'),ident.substringAfter(':'))
-        "reading_items", "playlists", "read_history" -> "id=?" to arrayOf(ident)
+        "reading_items", "playlists", "read_history", "reader_defaults" -> "id=?" to arrayOf(ident)
         else -> "itemId=?" to arrayOf(ident)
     }
     private fun upsert(kind: String,ident: String,row: JSONObject) {

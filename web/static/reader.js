@@ -19,10 +19,14 @@ for (const [id,key] of [['readerFont','font'],['readerSize','size'],['readerSpac
   readerNode(id).onchange = event => {
     prefs = readerModel.preferences({...prefs, [key]:['size','spacing'].includes(key) ? Number(event.target.value) : event.target.value});
     localStorage.setItem('yomu.reading', JSON.stringify(prefs)); applyReading();
+    localStorage.setItem('yomu.readingOverride','true'); readerNode('localReadingOverride').checked = true;
   };
 }
 readerNode('siteTheme').onchange = event => setYomuTheme(event.target.value);
-readerNode('resetReading').onclick = () => { prefs = readerModel.preferences(); localStorage.removeItem('yomu.reading'); applyReading(); };
+readerNode('resetReading').onclick = () => {
+  prefs = readerModel.preferences(); localStorage.removeItem('yomu.reading');
+  localStorage.setItem('yomu.readingOverride','true'); readerNode('localReadingOverride').checked = true; applyReading();
+};
 readerNode('appearance').addEventListener('keydown', event => {
   if (event.key === 'Escape') { readerNode('appearance').open = false; readerNode('appearance').querySelector('summary').focus(); }
 });
@@ -56,11 +60,17 @@ async function loadArticle() {
     readerNode('readerSource').hidden = !source;
     if (source) readerNode('readerSource').href = source; else readerNode('readerSource').removeAttribute('href');
     const fragment = document.createDocumentFragment();
-    for (const text of readerModel.paragraphs(item.normalizedText)) { const paragraph = document.createElement('p'); paragraph.textContent = text; fragment.append(paragraph); }
+    let offset = 0;
+    for (const text of readerModel.paragraphs(item.normalizedText)) {
+      const paragraph = document.createElement('p'); paragraph.textContent = text;
+      const found = item.normalizedText.indexOf(text,offset); paragraph.dataset.offset = Math.max(0,found);
+      offset = found + text.length; fragment.append(paragraph);
+    }
     readerNode('readerText').replaceChildren(fragment);
     readerNode('readerArticle').hidden = false;
     readerNode('readerNotice').textContent = '';
     readerNode('readerArticle').focus({preventScroll:true});
+    await connectResume(state,item);
   } catch (error) {
     if (epoch !== loadingEpoch) return;
     readerNode('readerNotice').textContent = error.name === 'TimeoutError' ? 'Yomu took too long to respond. Try again.' : error instanceof TypeError ? 'Cannot reach your library. Check your connection and try again.' : error.message;
