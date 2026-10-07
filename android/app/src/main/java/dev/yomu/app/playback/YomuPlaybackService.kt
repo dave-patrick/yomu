@@ -1,6 +1,7 @@
 package dev.yomu.app.playback
 
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -40,10 +41,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 import java.io.File
 import java.text.BreakIterator
 import java.util.Locale
@@ -74,8 +75,14 @@ class YomuPlaybackService : MediaLibraryService() {
     private var sleepTimer: Job? = null
     private var pendingOfflineFile: File? = null
     private var pendingOfflineIndex = -1
-    private var prefetchedSentence: Deferred<GeneratedSentence>? = null
-    private var prefetchedSentenceIndex = -1
+    private val sentenceBuffer = SentenceLookAhead<GeneratedSentence>(scope)
+    private var generationJob: Job? = null
+    private val speechHttpClient = okhttp3.OkHttpClient.Builder().callTimeout(java.time.Duration.ofSeconds(60)).build()
+    private val speechPreferences by lazy { getSharedPreferences("speech_preferences", MODE_PRIVATE) }
+    private val voiceChange = Runnable { applyVoiceChange() }
+    private val voiceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key in VOICE_PREFERENCE_KEYS) { handler.removeCallbacks(voiceChange); handler.post(voiceChange) }
+    }
     private var telephonyManager: TelephonyManager? = null
     private var callStateCallback: TelephonyCallback? = null
     private var legacyCallStateListener: PhoneStateListener? = null
@@ -118,7 +125,7 @@ class YomuPlaybackService : MediaLibraryService() {
                             val index = pendingOfflineIndex
                             pendingOfflineFile = null
                             pendingOfflineIndex = -1
-                            if (file != null) playFile(file, index)
+                            if (file != null) playFile(file, index) else generateAndPlayNext()
                         } else {
                             sentenceIndex++
                             generateAndPlayNext()
@@ -133,10 +140,6 @@ class YomuPlaybackService : MediaLibraryService() {
                     if (index < 0 || index !in sentences.indices) return
 
                     sentenceIndex = index
-                    if (prefetchedSentenceIndex == index) {
-                        prefetchedSentence = null
-                        prefetchedSentenceIndex = -1
-                    }
                     publishSnapshot()
                     saveCheckpoint()
                     val id = itemId ?: return
@@ -169,6 +172,7 @@ class YomuPlaybackService : MediaLibraryService() {
             registerPhoneStateMonitor()
         }
         restorePlaybackCheckpoint()
+        speechPreferences.registerOnSharedPreferenceChangeListener(voiceListener)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
@@ -312,6 +316,7 @@ class YomuPlaybackService : MediaLibraryService() {
     }
 
     private fun playItem(id: String, startAt: Int = 0, skipReturnCapture: Boolean = false) {
+        invalidatePreparedSpeech()
         playNowResume.onStart(itemId, sentenceIndex, id, skipReturnCapture)
         persistPlayNowResumePoint()
         if (itemId == id && sentences.isNotEmpty()) {
@@ -341,6 +346,49 @@ class YomuPlaybackService : MediaLibraryService() {
         return SpeechCpuGuard({ timeout -> lock.acquire(timeout) }, { if (lock.isHeld) lock.release() }).run(block)
     }
 
+    private fun invalidatePreparedSpeech() {
+        sentenceBuffer.reset()
+        speechHttpClient.dispatcher.cancelAll()
+        generationJob?.cancel()
+        generationJob = null
+        isGenerating = false
+        if (player.currentMediaItemIndex >= 0 && player.mediaItemCount > player.currentMediaItemIndex + 1) {
+            player.removeMediaItems(player.currentMediaItemIndex + 1, player.mediaItemCount)
+        }
+    }
+
+    private fun applyVoiceChange() {
+        val resumeWaiting = isGenerating || player.playWhenReady
+        invalidatePreparedSpeech()
+        localOnly = false
+        offlineNoticePlayed = false
+        pendingOfflineFile = null
+        pendingOfflineIndex = -1
+        if (itemId == null || sentences.isEmpty()) return
+        if (player.playbackState == Player.STATE_ENDED || player.currentMediaItem == null) {
+            if (resumeWaiting) generateAndPlayNext()
+        } else prefetchFollowing(sentenceIndex + 1)
+        PlaybackEvents.report("Voice updated. The next sentence uses your new selection.")
+    }
+
+    private fun bufferDepth(): Int = when {
+        speechPreferences.getBoolean("offline_only", false) -> 1
+        speechPreferences.getBoolean("online_primary", true) &&
+            speechPreferences.getString("online_provider", "azure") == "azure" &&
+            speechPreferences.getString("azure_voice", "").orEmpty().contains("DragonHD", true) -> 4
+        else -> 2
+    }
+
+    private fun prepareSentence(index: Int): Deferred<GeneratedSentence> {
+        val id = itemId.orEmpty()
+        val text = sentences[index]
+        return sentenceBuffer.get(index) { withSpeechCpuAwake {
+            val task = kotlin.coroutines.coroutineContext[Job]
+            val file = File(cacheDir, "speech/${id.hashCode()}/buffer-$index-${System.nanoTime()}.wav")
+            GeneratedSentence(index, file, synthesize(text, file) { task?.ensureActive() })
+        } }
+    }
+
     private fun generateAndPlayNext() {
         val id = itemId ?: return
         if (isGenerating) return
@@ -365,50 +413,34 @@ class YomuPlaybackService : MediaLibraryService() {
         }
         isGenerating = true
         val index = sentenceIndex
-        val text = sentences[index]
-        val readyNext = prefetchedSentence?.takeIf { prefetchedSentenceIndex == index }
-        if (readyNext != null) {
-            prefetchedSentence = null
-            prefetchedSentenceIndex = -1
-            scope.launch { withSpeechCpuAwake {
-                try {
-                    val generated = readyNext.await()
-                    startGeneratedPlayback(generated.file, generated.index, generated.offline)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Exception) {
-                    PlaybackEvents.report("Could not start speech. Check your voice settings or install the offline voice in Settings.")
-                    player.pause()
-                } finally { isGenerating = false }
-            } }
-            return
-        }
-        prefetchedSentence?.cancel()
-        prefetchedSentence = null
-        prefetchedSentenceIndex = -1
-        val file = File(cacheDir, "speech/${id.hashCode()}/$index-${System.currentTimeMillis()}.wav")
-        scope.launch { withSpeechCpuAwake {
+        val epoch = sentenceBuffer.epoch
+        sentenceBuffer.discardBefore(index)
+        val prepared = prepareSentence(index)
+        for (next in index + 1..minOf(sentences.lastIndex, index + bufferDepth())) prepareSentence(next)
+        generationJob = scope.launch { withSpeechCpuAwake {
             try {
-                val usedOffline = withContext(Dispatchers.IO) { synthesize(text, file) }
-                startGeneratedPlayback(file, index, usedOffline)
+                val generated = prepared.await()
+                if (epoch != sentenceBuffer.epoch || itemId != id) return@withSpeechCpuAwake
+                startGeneratedPlayback(generated.file, generated.index, generated.offline, epoch)
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
-                val offlineOnly = getSharedPreferences("speech_preferences", MODE_PRIVATE).getBoolean("offline_only", false)
-                PlaybackEvents.report(if (offlineOnly) "Offline speech could not start. Check that the Kokoro voice is installed in Settings."
-                    else "Could not start speech. Check your online voice settings or install the offline voice in Settings.")
-                player.pause()
-            } finally { isGenerating = false }
+                if (epoch == sentenceBuffer.epoch) {
+                    PlaybackEvents.report("Could not start speech. Check your voice settings or install the offline voice in Settings.")
+                    player.pause()
+                }
+            } finally { if (epoch == sentenceBuffer.epoch) isGenerating = false }
         } }
     }
 
-    private suspend fun startGeneratedPlayback(file: File, index: Int, usedOffline: Boolean) {
+    private suspend fun startGeneratedPlayback(file: File, index: Int, usedOffline: Boolean, epoch: Long) {
         localOnly = usedOffline
         if (usedOffline && !offlineNoticePlayed &&
             !getSharedPreferences("speech_preferences", MODE_PRIVATE).getBoolean("offline_only", false)) {
             // Announce the service loss once, then begin the already-prepared offline sentence.
             val notice = File(cacheDir, "speech/failover.wav")
             withContext(Dispatchers.IO) { synthesizeOffline("Service unavailable. Continuing with the offline voice.", notice) }
+            if (epoch != sentenceBuffer.epoch) return
             pendingOfflineFile = file
             pendingOfflineIndex = index
             offlineNoticePlayed = true
@@ -421,49 +453,32 @@ class YomuPlaybackService : MediaLibraryService() {
     private fun prefetchFollowing(index: Int) {
         val id = itemId ?: return
         if (index !in sentences.indices) return
-        if (prefetchedSentenceIndex == index && prefetchedSentence?.isActive == true) return
-        prefetchedSentence?.cancel()
-        prefetchedSentenceIndex = index
-        val text = sentences[index]
-        val file = File(cacheDir, "speech/${id.hashCode()}/prefetch-$index-${System.currentTimeMillis()}.wav")
-        prefetchedSentence = scope.async(Dispatchers.IO) { withSpeechCpuAwake {
-            val offline = synthesize(text, file)
-            GeneratedSentence(index, file, offline)
-        } }
-        val generatedSentence = prefetchedSentence ?: return
+        val epoch = sentenceBuffer.epoch
+        sentenceBuffer.discardBefore(sentenceIndex)
+        val end = minOf(sentences.lastIndex, index + bufferDepth() - 1)
+        val prepared = (index..end).map { it to prepareSentence(it) }
         scope.launch {
-            try {
-                val generated = generatedSentence.await()
-                val currentId = itemId ?: return@launch
-                fun canAppend(): Boolean = itemId == id && prefetchedSentenceIndex == index &&
-                    player.playbackState != Player.STATE_ENDED &&
-                    player.currentMediaItem?.mediaId == "$id:${index - 1}" &&
-                    player.mediaItemCount == player.currentMediaItemIndex + 1
-                if (currentId != id || !canAppend()) return@launch
-
-                // Queue the finished sentence ahead of the current one for a direct Media3 transition.
-                val offlineOnly = getSharedPreferences("speech_preferences", MODE_PRIVATE).getBoolean("offline_only", false)
-                val needsFailoverNotice = generated.offline && !offlineNoticePlayed && !offlineOnly
-                if (needsFailoverNotice) {
-                    val notice = File(cacheDir, "speech/failover.wav")
-                    withContext(Dispatchers.IO) {
-                        synthesizeOffline("Service unavailable. Continuing with the offline voice.", notice)
-                    }
-                    if (!canAppend()) return@launch
-                    player.addMediaItems(listOf(
-                        mediaItem(notice, -1, "Offline voice"),
-                        mediaItem(generated.file, generated.index, title),
-                    ))
-                    offlineNoticePlayed = true
-                    localOnly = true
-                } else {
-                    player.addMediaItem(mediaItem(generated.file, generated.index, title))
+            for ((next, future) in prepared) {
+                try {
+                    val generated = future.await()
+                    fun canAppend(): Boolean = sentenceBuffer.epoch == epoch && itemId == id &&
+                        player.playbackState != Player.STATE_ENDED && next > sentenceIndex &&
+                        player.mediaItemCount > 0 &&
+                        player.getMediaItemAt(player.mediaItemCount - 1).mediaId == "$id:${next - 1}"
+                    if (!canAppend()) continue
+                    val needsNotice = generated.offline && !offlineNoticePlayed && !speechPreferences.getBoolean("offline_only", false)
+                    if (needsNotice) {
+                        val notice = File(cacheDir, "speech/failover-${System.nanoTime()}.wav")
+                        withSpeechCpuAwake { withContext(Dispatchers.IO) {
+                            synthesizeOffline("Service unavailable. Continuing with the offline voice.", notice)
+                        } }
+                        if (!canAppend()) continue
+                        player.addMediaItems(listOf(mediaItem(notice, -1, "Offline voice"), mediaItem(generated.file, next, title)))
+                        offlineNoticePlayed = true
+                    } else player.addMediaItem(mediaItem(generated.file, next, title))
                     localOnly = generated.offline
-                }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                // Keep the prepared sentence; the sentence-ended fallback will try it normally.
+                } catch (error: CancellationException) { throw error }
+                catch (_: Exception) { break } // The ended-state path reports failure if this sentence is needed.
             }
         }
     }
@@ -573,7 +588,8 @@ class YomuPlaybackService : MediaLibraryService() {
         .setMediaMetadata(MediaMetadata.Builder().setTitle(mediaTitle).setArtist("Yomu").build())
         .build()
 
-    private fun synthesize(text: String, file: File): Boolean {
+    private fun synthesize(text: String, file: File, checkActive: () -> Unit = {}): Boolean {
+        checkActive()
         val prefs = getSharedPreferences("speech_preferences", MODE_PRIVATE)
         val offlineOnly = prefs.getBoolean("offline_only", false)
         if (offlineOnly) {
@@ -590,7 +606,7 @@ class YomuPlaybackService : MediaLibraryService() {
             for (providerId in order) {
                 val succeeded = when (providerId) {
                     "azure" -> vault.credentials()?.let { credentials -> runCatching {
-                        AzureRestSpeechProvider(credentials).synthesize(SpeechSynthesisRequest(text, azureVoice, file))
+                        AzureRestSpeechProvider(credentials, speechHttpClient).synthesize(SpeechSynthesisRequest(text, azureVoice, file))
                     }.isSuccess } ?: false
                     "elevenlabs" -> {
                         val tier = prefs.getString("elevenlabs_tier", "").orEmpty()
@@ -601,7 +617,7 @@ class YomuPlaybackService : MediaLibraryService() {
                             val model = prefs.getString("elevenlabs_model", ElevenLabsRestSpeechProvider.MODEL_ID)
                                 ?: ElevenLabsRestSpeechProvider.MODEL_ID
                             val attempt = runCatching {
-                                ElevenLabsRestSpeechProvider(key).synthesize(SpeechSynthesisRequest(text, voice, file, model))
+                                ElevenLabsRestSpeechProvider(key, speechHttpClient).synthesize(SpeechSynthesisRequest(text, voice, file, model))
                             }
                             attempt.exceptionOrNull()?.message?.let { reason ->
                                 if (reason != lastElevenLabsFailure) {
@@ -614,6 +630,7 @@ class YomuPlaybackService : MediaLibraryService() {
                     }
                     else -> false
                 }
+                checkActive()
                 if (succeeded) return false
             }
         }
@@ -627,7 +644,7 @@ class YomuPlaybackService : MediaLibraryService() {
         file.parentFile?.mkdirs()
         // Keep Kokoro warm for this playback session. Recreating OfflineTts for every sentence
         // reloads the model and creates an audible pause between each generated audio chunk.
-        playbackKokoroProvider().generate(text, voiceId, 1f).save(file)
+        synchronized(kokoroProviderLock) { playbackKokoroProvider().generate(text, voiceId, 1f).save(file) }
     }
 
     private fun playbackKokoroProvider(): SherpaKokoroEspeakProvider = synchronized(kokoroProviderLock) {
@@ -710,9 +727,7 @@ class YomuPlaybackService : MediaLibraryService() {
             scope.launch {
                 try {
                     player.pause()
-                    prefetchedSentence?.cancel()
-                    prefetchedSentence = null
-                    prefetchedSentenceIndex = -1
+                    invalidatePreparedSpeech()
                     val selected = withContext(Dispatchers.IO) { dao.getItem(requestedId) }
                         ?: error("This reading is no longer in Yomu.")
                     val selectedSentences = splitSentences(selected.normalizedText)
@@ -828,6 +843,9 @@ class YomuPlaybackService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        speechPreferences.unregisterOnSharedPreferenceChangeListener(voiceListener)
+        sentenceBuffer.reset()
+        speechHttpClient.dispatcher.cancelAll()
         saveCheckpoint()
         handler.removeCallbacksAndMessages(null)
         unregisterPhoneStateMonitor()
@@ -839,6 +857,7 @@ class YomuPlaybackService : MediaLibraryService() {
     }
 
     companion object {
+        private val VOICE_PREFERENCE_KEYS = setOf("azure_voice", "elevenlabs_voice", "elevenlabs_model", "kokoro_voice", "online_provider", "online_primary", "online_fallback_enabled", "offline_only", "try_online_after_failover", "allow_paid_elevenlabs")
         private const val CAR_ROOT_ID = "yomu:root"
         private const val CAR_TO_READ_ID = "yomu:to-read"
         private const val CAR_UP_NEXT_ID = "yomu:up-next"

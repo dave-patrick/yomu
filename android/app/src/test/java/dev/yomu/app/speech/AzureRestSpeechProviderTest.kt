@@ -7,6 +7,28 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class AzureRestSpeechProviderTest {
+    @Test fun successiveSentencesReuseConnectionAndSendChangedVoice() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("audio-one"))
+            server.enqueue(MockResponse().setBody("audio-two"))
+            val client = OkHttpClient()
+            val output = java.io.File.createTempFile("yomu-speech", ".wav")
+            try {
+                for (voice in listOf("en-AU-William:DragonHDLatestNeural", "en-US-Ava:DragonHDLatestNeural")) {
+                    AzureRestSpeechProvider(SpeechCredentials("test-key", "eastus"), client,
+                        server.url("/cognitiveservices").toString().trimEnd('/'))
+                        .synthesize(SpeechSynthesisRequest("Test sentence.", voice, output))
+                }
+                val first = server.takeRequest()
+                val second = server.takeRequest()
+                assertEquals(0, first.sequenceNumber)
+                assertEquals(1, second.sequenceNumber)
+                org.junit.Assert.assertTrue(first.body.readUtf8().contains("en-AU-William:DragonHDLatestNeural"))
+                org.junit.Assert.assertTrue(second.body.readUtf8().contains("en-US-Ava:DragonHDLatestNeural"))
+            } finally { output.delete(); client.connectionPool.evictAll(); client.dispatcher.executorService.shutdown() }
+        }
+    }
+
     @Test fun voiceCatalogKeepsAttributesForVoiceDescriptionsAndFilters() {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setBody("""[{"ShortName":"en-AU-William:DragonHDLatestNeural","DisplayName":"William","Locale":"en-AU","LocaleName":"English (Australia)","Gender":"Male","VoiceType":"Neural","SampleRateHertz":"24000","WordsPerMinute":"150","StyleList":["calm","friendly"],"SecondaryLocaleList":["en-NZ"]}]"""))
