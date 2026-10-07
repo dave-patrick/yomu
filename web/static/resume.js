@@ -69,7 +69,7 @@ async function connectResume(state,item){
 }
 function captureReading(){
  if(!resumeItem || !cursorChosen || document.hidden || positionConflict)return;
- pendingCursor={base:pendingCursor?.base ?? cursorBase,data:{itemId,anchor:readerModel.anchor(resumeItem.normalizedText,readingOffset(),textHash),updatedAt:Date.now(),deviceLabel:'Website'}};
+ pendingCursor={base:pendingCursor ? pendingCursor.base : cursorBase,data:{itemId,anchor:readerModel.anchor(resumeItem.normalizedText,readingOffset(),textHash),updatedAt:Date.now(),deviceLabel:'Website'}};
  persistPending();readerNode('positionStatus').textContent='Reading position saved on this browser. Syncing…';
  clearTimeout(positionTimer);positionTimer=setTimeout(flushReading,1000);
 }
@@ -132,7 +132,7 @@ readerNode('localReadingOverride').onchange=event=>{
 };
 readerNode('shareReading').onclick=()=>{
  if(!resumeState)return;
- pendingDefaults={base:pendingDefaults?.base ?? defaultsBase,data:{id:'global',schemaVersion:1,font:prefs.font,size:prefs.size,spacing:prefs.spacing}};
+ pendingDefaults={base:pendingDefaults ? pendingDefaults.base : defaultsBase,data:{id:'global',schemaVersion:1,font:prefs.font,size:prefs.size,spacing:prefs.spacing}};
  persistPending();flushReading();
 };
 window.addEventListener('scroll',captureReading,{passive:true});
