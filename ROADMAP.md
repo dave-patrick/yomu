@@ -1,6 +1,6 @@
 # Yomu product roadmap
 
-Updated 2026-10-06. Covers the Android app, website, Chrome extension, and shared
+Updated 2026-10-07. Covers the Android app, website, Chrome extension, and shared
 sync service. This is a prioritized plan, not an implementation or delivery-date
 commitment. The original Android milestones remain in
 [Pre-development package](YOMU-PRE-DEVELOPMENT-PACKAGE.md).
@@ -21,7 +21,9 @@ Android now separates the To read “Play now” menu from the hold-to-queue ges
 shows gesture help and long-press accessibility labels, and observes sync attempts,
 successes, failures, and busy state live. Permanent authentication/server-library
 errors pause automatic retries; transient network errors keep retrying. The APK
-is built and unit-tested; installation and device/TalkBack acceptance are pending.
+is installed through alpha17 and unit-tested; broader device/TalkBack acceptance
+remains pending. Reader transitions, screen-off preparation, HD buffering, and
+live voice changes have subsequent fixes documented in their delivery notes.
 
 Implemented 2026-10-07: R14 dedicated web reader with stable article/list URLs,
 selectable paragraphs, source link, browser-local font/size/spacing/width/theme,
@@ -46,17 +48,39 @@ while MP3 generation is an explicit export.
 - Android library, importers, reader, listening, playlists, queue, and manual backup
   are implemented. Production audio lifecycle and Android Auto still need broader QA.
 - Private Render web library is deployed with article/document saving, organization,
-  basic extracted-text reading, approved branding, and source website icons.
+  a dedicated web reader, approved branding, and source website icons.
 - Owner verified initial sync and library changes in both directions.
 - Android sync direction/interval controls and matching settings styling are installed.
   One-way modes, concurrency, offline conflicts, and recovery need deeper device QA.
 - Extension v0.2.0 implements page saving, existing-playlist selection, light/dark/system
   appearance, pairing, and duplicate handling. Automated mocked save-flow checks pass;
   real Chrome installation/permission/save/theme/phone-sync checks remain unconfirmed.
-- Full web reader, web audio, shared global preferences, tags, and Raindrop integration
-  are planned. New article/document extraction currently depends on the phone.
+- Dedicated web reader and browser-local reading preferences are implemented.
+  Web audio, shared global preferences, tags, and Raindrop integration are planned.
+  New article/document extraction currently depends on the phone.
 
 ## Priority assessment
+
+### Top five remaining priorities — 2026-10-07
+
+1. **Reliability and recovery (P0/P1):** protect edits/deletes during import,
+   coordinate restore with active work, and finish interrupted/large-file sync
+   recovery and acceptance checks (R01–R08/R32). Recent playback generation fixes
+   are delivered; the broader reliability group remains open.
+2. **Actionable import/sync status (P1):** finish last-attempt/success, pending
+   changes where tracked, per-item retry, and permanent-versus-transient errors
+   across surfaces (R12). The first usability/status pass is implemented.
+3. **Phone quiet reading and follow controls (P1):** Read quietly, selectable text,
+   Follow narration, and clear controls when displayed and playing items differ
+   (R15). Reader article-transition fixes are delivered; this feature remains open.
+4. **Cross-device reading resume (P1):** canonical text anchors, separate reading
+   and listening positions, offline recovery, and shared reader defaults (R22/Wave 3).
+5. **Playlist management and capture (P1):** rename/delete/counts/reorder,
+   visible membership, and faster/recoverable extension destinations (R17/R21).
+
+The table below describes the original initiative sequence, including partly
+delivered work. The dedicated website reader and initial library action cleanup
+are implemented. Browser audio is deferred by the owner; Play is a disabled stub.
 
 Priorities reflect daily usefulness, user friction, dependencies, and risk. Effort is
 relative to this codebase: S = contained feature; M = several coordinated changes;
