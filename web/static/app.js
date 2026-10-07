@@ -451,9 +451,14 @@ function sourceIcon(item) {
     if (!['https:','http:'].includes(url.protocol)) throw Error();
     mark.classList.add('site-icon'); mark.textContent = url.hostname.replace(/^www\./,'').slice(0,1).toUpperCase();
     const img = el('img'); img.alt = ''; img.referrerPolicy = 'no-referrer'; img.loading = 'lazy';
-    img.onload = () => mark.replaceChildren(img);
+    // Lazy images must be connected to the document to enter the loading viewport.
+    // Keep the source letter visible until a real icon is available.
+    const fallback = el('span', mark.textContent);
+    img.className = 'source-image';
+    img.onload = () => { fallback.remove(); mark.classList.add('icon-loaded'); };
+    mark.replaceChildren(fallback, img);
     let triedDirect = false;
-    img.onerror = () => { if (!triedDirect) { triedDirect = true; img.src = 'https://' + url.host + '/favicon.ico'; } else { img.onload = null; img.onerror = null; } };
+    img.onerror = () => { if (!triedDirect) { triedDirect = true; img.src = 'https://' + url.host + '/favicon.ico'; } else { img.onload = null; img.onerror = null; img.remove(); } };
     img.src = 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(url.hostname) + '&sz=64';
     mark.title = url.hostname;
   } catch { mark.textContent = 'WEB'; }
