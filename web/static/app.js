@@ -246,6 +246,12 @@ function fillRow(content, item, dates) {
   const read = actionButton('Read', () => openReader(item.id), {cls:'read-action', unavailable:!ready, label:'Read ' + item.title});
   if (!ready) read.title = 'Your phone needs to finish importing this item.';
   actions.append(read);
+  const play = actionButton('Play · Coming later', () => {}, {
+    cls:'secondary play-placeholder', unavailable:true,
+    label:'Play ' + item.title + '. Website audio coming later.'
+  });
+  play.title = 'Website audio coming later. Listen in the phone app for now.';
+  actions.append(play);
   const more = el('details', undefined, 'item-menu');
   const summary = el('summary', 'More');
   summary.setAttribute('aria-label', 'More actions for ' + item.title);

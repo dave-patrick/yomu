@@ -242,6 +242,11 @@ and no accidental deletion from the simplified action menu.
 
 ### Wave 2 — Web reader and settings
 
+Website audio placeholder added 2026-10-07: every reading list shows a disabled
+“Play · Coming later” action beside Read. This is a visible stub only; browser
+synthesis, player controls, queue playback, and audio/progress integration remain
+planned under Browser listening and player. It does not send phone commands.
+
 - [x] Replace the basic dialog with a dedicated responsive reader and stable navigation.
 - [x] Add font, size, line spacing, column width, light/dark/system theme, and visible
   selected settings; persist device-local preferences through reload.
