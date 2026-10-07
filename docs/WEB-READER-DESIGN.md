@@ -1,7 +1,9 @@
 # Web reader and settings design
 
-Status: planned; documented at the owner's request on 2026-10-06. This document
-defines the next web expansion, not features already implemented.
+Status: the dedicated web reader shipped on 2026-10-07 with stable URLs,
+selectable paragraphs, source access, browser-local typography/theme preferences,
+and library return restoration. Shared reading resume, shared defaults, and audio
+remain planned. The architecture below describes those later phases as well.
 
 ## Goal
 
@@ -12,7 +14,7 @@ Keep To read, Up next, playlists, archive, and Read history distinct.
 ## Current foundation
 
 The Render website saves URLs/files, organizes the library, and opens extracted
-text in a basic dialog. The owner has verified initial sync and changes in both
+text in a dedicated reader. The owner has verified initial sync and changes in both
 directions. Android performs article/document extraction. Website Settings now
 provides browser-local Light/Dark/System appearance and roadmap access. Web audio,
 automatic reading-position capture, and full reading/sync/connection settings

@@ -117,8 +117,6 @@ dialog p,.hint{color:var(--muted)}
 dialog label{font-size:15px}
 .dialog-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .dialog-toolbar a{min-height:44px;display:flex;align-items:center}
-#reader{max-width:800px}
-#readerText{white-space:pre-wrap;overflow-wrap:anywhere;font-family:Georgia,serif;font-size:20px;line-height:1.8;max-width:70ch}
 .document-page{display:block}
 .document-page main{max-width:950px;margin:auto}
 .back-link{display:inline-flex;align-items:center;min-height:44px;margin-block-end:24px;text-decoration:none}

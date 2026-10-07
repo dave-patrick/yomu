@@ -82,4 +82,9 @@ authenticated and content is never exposed by a public file URL.
 ## Planned web reader and settings
 
 See [Web reader design](../docs/WEB-READER-DESIGN.md) and [Roadmap](../ROADMAP.md).
-These describe planned work; the existing basic text viewer remains the current reader.
+The dedicated reader is available at `/reader.html?id=<item-id>`. Read opens it
+from the library; returning restores the view, search, scroll position, and focused
+item in the same tab. Font, size, spacing, and width are saved for this browser;
+theme uses the existing System/Light/Dark preference. Text is selectable, source
+links are available, and opening or scrolling does not mark an item read or change
+the phone's listening position. Shared resume and browser audio remain planned.

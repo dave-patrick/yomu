@@ -1,7 +1,17 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const model = YomuLibrary;
-let key = localStorage.getItem('yomu-key') || '', snapshot = null, view = 'toRead';
+const libraryQuery = new URLSearchParams(location.search);
+let key = localStorage.getItem('yomu-key') || '', snapshot = null, view = libraryQuery.get('view') || 'toRead';
+$('search').value = libraryQuery.get('search') || '';
+let returnContext = null;
+try { returnContext = JSON.parse(sessionStorage.getItem('yomu.libraryReturn') || 'null'); } catch {}
+function libraryRoute() {
+  const params = new URLSearchParams();
+  if (view !== 'toRead') params.set('view', view);
+  if ($('search').value) params.set('search', $('search').value);
+  return '/' + (params.size ? '?' + params : '');
+}
 let connectionEpoch = 0, writeDepth = 0, checking = false, connectionError = '', nameAction = null;
 const queue = model.createSerialQueue();
 const client = localStorage.getItem('yomu-client') || crypto.randomUUID();
@@ -160,7 +170,7 @@ function rowSignature(item, dates) {
 }
 function render() {
   const availableViews = views();
-  if (!availableViews.some(([id]) => id === view)) view = 'toRead';
+  if (snapshot && !availableViews.some(([id]) => id === view)) view = 'toRead';
   reconcile($('navigation'), availableViews.map(([id,name]) => ({id,name})),
     entry => actionButton(entry.name, () => { view = entry.id; render(); }, {cls:'quiet'}),
     (node,entry) => {
@@ -168,7 +178,7 @@ function render() {
       node.className = 'quiet' + (entry.id === view ? ' active' : '');
       if (entry.id === view) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current');
     });
-  $('heading').textContent = availableViews.find(([id]) => id === view)[1];
+  $('heading').textContent = availableViews.find(([id]) => id === view)?.[1] || 'Playlist';
   $('summary').textContent = summaries[view] || 'A playlist shares reading progress with the rest of your library.';
   const items = model.selectItems(snapshot, view, $('search').value);
   $('count').textContent = items.length + (items.length === 1 ? ' item' : ' items');
@@ -197,6 +207,18 @@ function render() {
     fillRow(row.lastElementChild, item, dates);
   });
   updateControls();
+  if (snapshot) {
+    history.replaceState(history.state, '', libraryRoute());
+    if (returnContext) {
+      const context = returnContext; returnContext = null;
+      sessionStorage.removeItem('yomu.libraryReturn');
+      if (context.route === libraryRoute()) requestAnimationFrame(() => {
+        const row = [...$('library').children].find(node => node.dataset.key === context.id);
+        row?.querySelector('.read-action')?.focus({preventScroll:true});
+        window.scrollTo(0, Number(context.scroll) || 0);
+      });
+    }
+  }
 }
 function fillRow(content, item, dates) {
   const progress = lookup('reading_progress', item.id), status = model.importStatus(item), ready = model.canRead(item);
@@ -313,11 +335,9 @@ function fillRow(content, item, dates) {
 function openReader(id) {
   const item = currentItem(id);
   if (!model.canRead(item)) { notice('Open Yomu on your phone and sync to finish importing this item.'); return; }
-  $('readerTitle').textContent = item.title;
-  $('readerText').textContent = item.normalizedText;
-  const link = $('readerSource'); link.hidden = true; link.removeAttribute('href');
-  try { const url = new URL(item.sourceUrl); if (['https:','http:'].includes(url.protocol) && !url.username && !url.password) { link.href = url.href; link.hidden = false; } } catch {}
-  $('reader').showModal();
+  const route = libraryRoute();
+  sessionStorage.setItem('yomu.libraryReturn', JSON.stringify({route, id, scroll:window.scrollY}));
+  location.href = '/reader.html?' + new URLSearchParams({id, from:route});
 }
 function openName(type, id) {
   nameAction = {type,id};
@@ -410,7 +430,6 @@ $('search').oninput = render;
 $('pairButton').onclick = openPair;
 $('closePair').onclick = () => $('pair').close();
 $('closeName').onclick = () => $('nameDialog').close();
-$('closeReader').onclick = () => { $('reader').close(); render(); };
 $('closeDetails').onclick = () => $('itemDetails').close();
 $('newPlaylist').onclick = () => openName('create');
 $('themeToggle').onclick = () => setYomuTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
@@ -441,6 +460,12 @@ function sourceIcon(item) {
   return mark;
 }
 render();
+window.addEventListener('pageshow', event => {
+  if (event.persisted) {
+    try { returnContext = JSON.parse(sessionStorage.getItem('yomu.libraryReturn') || 'null'); } catch {}
+    render();
+  }
+});
 if (new URLSearchParams(location.search).get('connect') === '1' || !key) openPair();
 if (key) refresh({quiet:true});
 setInterval(() => {

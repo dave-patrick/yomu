@@ -23,7 +23,13 @@ successes, failures, and busy state live. Permanent authentication/server-librar
 errors pause automatic retries; transient network errors keep retrying. The APK
 is built and unit-tested; installation and device/TalkBack acceptance are pending.
 
-Remaining: dedicated web reader routes and Back restoration, phone Read quietly
+Implemented 2026-10-07: R14 dedicated web reader with stable article/list URLs,
+selectable paragraphs, source link, browser-local font/size/spacing/width/theme,
+and return to the previous library view/search/scroll/focus. Opening and scrolling
+do not publish listening progress or mark content completed. Unit and isolated
+Chrome desktop/mobile checks passed; cross-device resume remains Wave 3.
+
+Remaining: phone Read quietly
 and follow controls, broader large-text/TalkBack coverage, and playlist feature
 parity. The grouped checklists below remain open until their full criteria pass.
 
@@ -236,8 +242,8 @@ and no accidental deletion from the simplified action menu.
 
 ### Wave 2 — Web reader and settings
 
-- [ ] Replace the basic dialog with a dedicated responsive reader and stable navigation.
-- [ ] Add font, size, line spacing, column width, light/dark/system theme, and visible
+- [x] Replace the basic dialog with a dedicated responsive reader and stable navigation.
+- [x] Add font, size, line spacing, column width, light/dark/system theme, and visible
   selected settings; persist device-local preferences through reload.
 - [ ] Add website Settings for Reading, Sync, and Connection. Keep Listening hidden
   until it has functioning controls.
