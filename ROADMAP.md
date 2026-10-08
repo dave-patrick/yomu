@@ -113,6 +113,17 @@ P1 is the next product work; P2 follows the core experience; P3 needs separate s
 | 14 | P3 | Offline web/PWA and web MP3 export | Website/backend | L–XL | Storage/privacy/export decisions should follow stable reading and audio |
 | 15 | P3 | Public distribution readiness | App/extension/backend | XL | Only if the owner chooses distribution beyond personal use |
 
+## Newsletter capture — planned 2026-10-07
+
+Owner-requested: support both forwarding newsletters to a private Yomu address and
+connecting a mailbox eventually, with automatic routing to a selected playlist.
+Start with forwarding, server-side email-body extraction, rule preview, durable
+retry/deduplication, and source/error visibility. Connected mailboxes follow as a
+separate increment. P2 / L, after core import/sync and playlist reliability, alongside
+phone-independent extraction; no browser-audio dependency.
+See [Newsletter capture design](docs/NEWSLETTER-CAPTURE-DESIGN.md) for mechanics,
+privacy, rule behavior, dependencies, and acceptance gates.
+
 ## Review additions — 2026-10-06
 
 A full source and bounded interface review is recorded in
@@ -348,6 +359,13 @@ never claim Android-equivalent background reliability without evidence. Provider
 never enter shared records, logs, source control, or browser-readable API responses.
 
 ### Wave 6 — Remove dependencies and add integrations
+
+- [ ] Newsletter capture: private forwarding address, server email-body extraction,
+  explicit newsletter-to-playlist rules, durable retry/deduplication, and Needs routing.
+  Imports remain in To read; capture never starts playback. Validate phone compatibility.
+- [ ] Connected mailbox capture: selected newsletters/labels, delegated authorization,
+  incremental checkpoints, bounded backfill, pause/revoke, and cross-method duplicates.
+  Preserve mailbox read/archive/delete state. See [design](docs/NEWSLETTER-CAPTURE-DESIGN.md).
 
 - [ ] Evaluate server public-article extraction first, then PDF/DOCX/OCR separately.
   Preserve provenance, normalized-text versions, and existing content on failure.
