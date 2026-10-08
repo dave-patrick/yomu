@@ -1,4 +1,5 @@
 package dev.yomu.app
+import androidx.compose.material.icons.filled.Email
 
 import android.content.Intent
 import android.net.Uri
@@ -452,6 +453,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
             confirmButton = { TextButton(onClick = { showSearch = false }) { Text("Done") } },
             dismissButton = { TextButton(onClick = { libraryQuery = "" }) { Text("Clear") } },
         )
+        var showInbox by rememberSaveable { mutableStateOf(false) }
         var showSettings by rememberSaveable { mutableStateOf(false) }
         var showAbout by rememberSaveable { mutableStateOf(false) }
         var showAdd by rememberSaveable { mutableStateOf(false) }
@@ -463,8 +465,9 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
         var pdfPasswordPending by remember { mutableStateOf<ReadingListRow?>(null) }
         var pdfPassword by rememberSaveable { mutableStateOf("") }
         var selectedPlaylist by remember { mutableStateOf<PlaylistEntity?>(null) }
-        BackHandler(enabled = reading != null || selectedPlaylist != null || showAbout || showSettings || navigationHistory.isNotEmpty()) {
+        BackHandler(enabled = showInbox || reading != null || selectedPlaylist != null || showAbout || showSettings || navigationHistory.isNotEmpty()) {
             when {
+                showInbox -> showInbox = false
                 reading != null -> vm.closeReader()
                 selectedPlaylist != null -> selectedPlaylist = null
                 showAbout -> { showAbout = false; showSettings = true }
@@ -529,7 +532,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
             contentWindowInsets = WindowInsets.navigationBars,
             floatingActionButtonPosition = FabPosition.End,
             floatingActionButton = {
-                if (reading == null && !showSettings && !showAbout && selectedPlaylist == null) {
+                if (!showInbox && reading == null && !showSettings && !showAbout && selectedPlaylist == null) {
                     FloatingActionButton(onClick = { showAdd = true }) {
                         Icon(Icons.Default.Add, contentDescription = "Add a link or document")
                     }
@@ -548,7 +551,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                                     modifier = Modifier.width(190.dp).height(64.dp), contentScale = ContentScale.Fit)
                             }
                             if (reading != null || showSettings || showAbout || selectedPlaylist != null || destination != Destination.TO_READ) {
-                                Text(if (reading != null) reading!!.title else if (showAbout) "About" else if (showSettings) "Settings" else selectedPlaylist?.name ?: destination.title,
+                                Text(if (showInbox) "Inbox" else if (reading != null) reading!!.title else if (showAbout) "About" else if (showSettings) "Settings" else selectedPlaylist?.name ?: destination.title,
                                     modifier = if (reading != null) Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE) else Modifier,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     style = if (reading != null) MaterialTheme.typography.titleLarge else MaterialTheme.typography.labelSmall,
@@ -558,15 +561,16 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                         }
                     },
                     navigationIcon = {
-                        if (reading != null || selectedPlaylist != null || showSettings || showAbout) IconButton(onClick = {
-                            when { reading != null -> vm.closeReader(); selectedPlaylist != null -> selectedPlaylist = null; showAbout -> { showAbout = false; showSettings = true }; else -> showSettings = false }
+                        if (showInbox || reading != null || selectedPlaylist != null || showSettings || showAbout) IconButton(onClick = {
+                            when { showInbox -> showInbox = false; reading != null -> vm.closeReader(); selectedPlaylist != null -> selectedPlaylist = null; showAbout -> { showAbout = false; showSettings = true }; else -> showSettings = false }
                         }) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
                     },
                     actions = {
-                        if (!showSettings && !showAbout && reading == null && selectedPlaylist == null) {
+                        if (!showInbox && !showSettings && !showAbout && reading == null && selectedPlaylist == null) {
                             if (destination == Destination.TO_READ || destination == Destination.UP_NEXT) {
                                 IconButton(onClick = { showSearch = true }) { Icon(Icons.Default.Search, contentDescription = "Search your library", tint = if (libraryQuery.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary) }
                             }
+                            IconButton(onClick = { showInbox = true }) { Icon(Icons.Default.Email, contentDescription = "Newsletter inbox") }
                             IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
                         } else if (showSettings) {
                             IconButton(onClick = {
@@ -583,7 +587,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
             },
             snackbarHost = { SnackbarHost(snackbar, Modifier.padding(bottom = 8.dp)) },
             bottomBar = {
-                if (reading == null && !showSettings && !showAbout && selectedPlaylist == null) {
+                if (!showInbox && reading == null && !showSettings && !showAbout && selectedPlaylist == null) {
                     Column {
                         playback?.let { state ->
                             CompactPlayer(
@@ -620,6 +624,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                     },
         ) { padding ->
             when {
+                showInbox -> NewsletterInbox(Modifier.padding(padding))
                 reading != null -> androidx.compose.runtime.key(reading!!.id) { ReaderScreen(reading!!, vm, onClose = vm::closeReader,
                     onExportMp3 = { name ->
                         val folder = exportTreeUri?.let(Uri::parse)
@@ -1074,7 +1079,11 @@ private fun PlaylistList(items: List<PlaylistEntity>, vm: LibraryViewModel, onCr
                     Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Bookmarks, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(14.dp))
-                        Column { Text(playlist.name, style = MaterialTheme.typography.titleMedium); Text("${memberships.count { it.playlistId == playlist.id }} items", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Column(Modifier.weight(1f)) { Text(playlist.name, style = MaterialTheme.typography.titleMedium); Text("${memberships.count { it.playlistId == playlist.id }} items", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Column {
+                            TextButton(enabled = playlist.id != items.first().id, onClick = { vm.movePlaylist(playlist.id, -1) }) { Text("Move up") }
+                            TextButton(enabled = playlist.id != items.last().id, onClick = { vm.movePlaylist(playlist.id, 1) }) { Text("Move down") }
+                        }
                     }
                 }
             }

@@ -172,7 +172,8 @@ class NewsletterService:
         return json.loads(row['payload'])
 
     def import_issue(self, db, delivery, preview, playlist_id):
-        self.playlist(db, playlist_id)
+        if playlist_id:
+            self.playlist(db, playlist_id)
         if delivery['item_id']:
             raise HTTPException(409, 'This delivery has already been imported.')
         now, item_id = int(time.time() * 1000), str(uuid.uuid4())
@@ -182,9 +183,10 @@ class NewsletterService:
                     importedAt=delivery['received_at'], updatedAt=now, estimatedSecondsAtOneX=max(1, len(text.split()) * 60 // 180),
                     contentVersion=1, manualOrder=now, archived=False, tags='')
         self.write(db, 'reading_items', item_id, item)
-        orders = [json.loads(row[0]).get('sortOrder', 0) for row in db.execute("SELECT payload FROM records WHERE kind='playlist_memberships' AND deleted=0") if json.loads(row[0]).get('playlistId') == playlist_id]
-        membership = dict(playlistId=playlist_id, itemId=item_id, sortOrder=max(orders, default=-1) + 1, addedAt=now)
-        self.write(db, 'playlist_memberships', playlist_id + ':' + item_id, membership)
+        if playlist_id:
+            orders = [json.loads(row[0]).get('sortOrder', 0) for row in db.execute("SELECT payload FROM records WHERE kind='playlist_memberships' AND deleted=0") if json.loads(row[0]).get('playlistId') == playlist_id]
+            membership = dict(playlistId=playlist_id, itemId=item_id, sortOrder=max(orders, default=-1) + 1, addedAt=now)
+            self.write(db, 'playlist_memberships', playlist_id + ':' + item_id, membership)
         db.execute("UPDATE newsletter_deliveries SET state='imported',item_id=?,payload=NULL,error=NULL WHERE id=?", (item_id, delivery['id']))
         return item_id
 
@@ -293,6 +295,7 @@ def create_router(service):
             body = json.loads(await bounded_body(request))
             playlist_id = body['playlistId']
             assert isinstance(playlist_id, str) and type(body.get('createRule', False)) is bool
+            assert playlist_id or not body.get('createRule')
         except (ValueError, KeyError, TypeError, AssertionError):
             raise HTTPException(400, 'Choose a playlist.')
         with service.lock, service.connect() as db:

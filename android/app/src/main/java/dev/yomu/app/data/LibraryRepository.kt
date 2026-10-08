@@ -116,6 +116,15 @@ class LibraryRepository(private val database: LibraryDatabase) {
         dao.getPlaylist(id)?.let { dao.upsertPlaylist(it.copy(name = cleaned)) }
     }
 
+    suspend fun movePlaylist(id: String, direction: Int) = database.withTransaction {
+        val rows = dao.getPlaylists().sortedWith(compareBy<PlaylistEntity> { it.sortOrder }.thenBy { it.name }).toMutableList()
+        val index = rows.indexOfFirst { it.id == id }
+        if (index < 0) return@withTransaction
+        val target = (index + direction).coerceIn(0, rows.lastIndex)
+        rows.add(target, rows.removeAt(index))
+        rows.forEachIndexed { order, row -> dao.upsertPlaylist(row.copy(sortOrder = order)) }
+    }
+
     suspend fun deletePlaylist(id: String) = database.withTransaction {
         dao.clearPlaylistMemberships(id)
         dao.deletePlaylist(id)

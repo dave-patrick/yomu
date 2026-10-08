@@ -393,6 +393,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val allItems = repository.dao.observeAllItems().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val memberships = repository.dao.observeAllMemberships().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     fun renamePlaylist(id: String, name: String) = work("Renaming playlist…") { repository.renamePlaylist(id, name) }
+    fun movePlaylist(id: String, direction: Int) = work("Saving playlist order…") { repository.movePlaylist(id, direction) }
+
     fun deletePlaylist(id: String) = work("Deleting playlist…") { repository.deletePlaylist(id) }
     fun movePlaylistItem(id: String, item: String, direction: Int) = work("Reordering playlist…") { repository.movePlaylistItem(id, item, direction) }
     val deletedItems = repository.dao.observeDeleted().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

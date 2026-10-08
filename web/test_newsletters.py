@@ -41,6 +41,21 @@ class NewsletterTests(unittest.TestCase):
         with backend.connect() as db:
             return dict(db.execute('SELECT * FROM newsletter_deliveries WHERE id=?', (ident,)).fetchone())
 
+    def test_save_without_playlist_and_reject_empty_rule(self):
+        ident = self.accept()
+        url = '/api/newsletters/deliveries/' + ident + '/route'
+        self.assertEqual(self.client.post(url, json={'playlistId':'', 'createRule':True}).status_code, 400)
+        self.assertEqual(self.record(ident)['state'], 'needs_routing')
+        response = self.client.post(url, json={'playlistId':'', 'createRule':False})
+        self.assertEqual(response.status_code, 200)
+        item_id = response.json()['itemId']
+        with backend.connect() as db:
+            item = json.loads(db.execute("SELECT payload FROM records WHERE kind='reading_items' AND id=?", (item_id,)).fetchone()[0])
+            self.assertTrue(item['inToRead'])
+            members = [json.loads(r[0]) for r in db.execute("SELECT payload FROM records WHERE kind='playlist_memberships' AND deleted=0")]
+            self.assertFalse(any(m['itemId'] == item_id for m in members))
+        self.assertEqual(self.record(ident)['state'], 'imported')
+
     def test_preview_and_rule_then_automatic_ready_item(self):
         ident = self.accept()
         preview = self.client.get('/api/newsletters/deliveries/' + ident).json()

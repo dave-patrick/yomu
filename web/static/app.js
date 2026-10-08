@@ -210,6 +210,7 @@ function render() {
     row.dataset.signature = signature;
     fillRow(row.lastElementChild, item, dates);
   });
+  renderPlaylistManager();
   updateControls();
   if (snapshot) {
     history.replaceState(history.state, '', libraryRoute());
@@ -505,3 +506,29 @@ if (key) refresh({quiet:true});
 setInterval(() => {
   if (key && !document.hidden && !document.querySelector('dialog[open], .item-menu[open]')) refresh({quiet:true});
 },15000);
+
+function renderPlaylistManager() {
+  if ($('playlistManager').hidden) return;
+  const rows = records('playlists').sort((a,b) => a.sortOrder-b.sortOrder || a.name.localeCompare(b.name));
+  $('playlistManagerRows').replaceChildren();
+  if (!rows.length) $('playlistManagerRows').append(el('p','No playlists yet.'));
+  rows.forEach((p,index) => {
+    const row = el('div',undefined,'actions'); row.append(el('strong',p.name));
+    const move = direction => runAction(async epoch => {
+      const ordered = records('playlists').sort((a,b) => a.sortOrder-b.sortOrder || a.name.localeCompare(b.name));
+      const from = ordered.findIndex(x => x.id === p.id), to = from+direction;
+      if (from < 0 || to < 0 || to >= ordered.length) return;
+      ordered.splice(to,0,ordered.splice(from,1)[0]);
+      await mutate(ordered.map((x,i) => change('playlists',x.id,{...x,sortOrder:i})), 'Playlist order saved.',epoch);
+    });
+    row.append(actionButton('Move up',()=>move(-1),{write:true,unavailable:index===0,label:'Move '+p.name+' up'}),
+      actionButton('Move down',()=>move(1),{write:true,unavailable:index===rows.length-1,label:'Move '+p.name+' down'}),
+      actionButton('Delete',()=>runAction(async epoch=>{
+        if (!confirm('Delete playlist “'+p.name+'”? Its saved articles stay in your library.')) return;
+        await mutate([change('playlists',p.id,null),...records('playlist_memberships').filter(m=>m.playlistId===p.id).map(m=>change('playlist_memberships',m.playlistId+':'+m.itemId,null))],'Playlist deleted. Articles kept.',epoch);
+      }),{write:true,label:'Delete playlist '+p.name}));
+    $('playlistManagerRows').append(row);
+  });
+}
+$('managePlaylists').onclick = () => { $('playlistManager').hidden=false; renderPlaylistManager(); $('playlistManager').scrollIntoView({block:'start'}); };
+$('closePlaylistManager').onclick = () => { $('playlistManager').hidden=true; $('managePlaylists').focus(); };

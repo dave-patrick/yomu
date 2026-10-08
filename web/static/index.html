@@ -6,8 +6,10 @@
 <aside aria-label="Library navigation">
   <div class="brand"><img class="brand-icon" src="/icon.png" alt=""><img class="wordmark" src="/wordmark.png" alt="Yomu"></div>
   <p class="subtitle">Your reading, ready to listen.</p>
+  <a class="roadmap-link" href="/newsletters.html">Inbox</a>
   <nav id="navigation" aria-label="Library views"></nav>
   <div class="sidebar-tools">
+    <button id="managePlaylists" class="quiet" data-write>Manage playlists</button>
     <button id="newPlaylist" class="quiet" data-write>New playlist</button>
     <a class="roadmap-link" href="/settings.html">Settings</a>
 
@@ -33,6 +35,7 @@
   <div id="searchPopup" class="search-popup" popover aria-labelledby="searchTitle"><form id="searchForm" role="search"><div class="search-heading"><label id="searchTitle" for="search">Search your library</label><button id="closeSearch" type="button" class="icon-button" aria-label="Close search"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><input id="search" type="search" placeholder="Title, source, or text" autocomplete="off"><p class="hint">Filters the current list as you type.</p></form></div>
   <p id="notice" role="status" aria-live="polite" aria-atomic="true"></p>
   <section id="library" aria-label="Saved reading"></section>
+<section id="playlistManager" hidden aria-labelledby="playlistManagerTitle"><h2 id="playlistManagerTitle">Manage playlists</h2><p>Change their navigation order. Deleting a playlist keeps its articles in your library.</p><div id="playlistManagerRows"></div><button id="closePlaylistManager" class="secondary">Done</button></section>
 </main>
 <dialog id="pair" aria-labelledby="pairTitle" aria-describedby="pairHelp pairError">
   <form id="pairForm"><h2 id="pairTitle">Connect your library</h2><p id="pairHelp">Use the same private access key on this browser, your phone, and the extension.</p><label for="key">Access key</label><input id="key" type="password" autocomplete="off" required><p class="hint">The key is saved on this device. Only connect browsers you trust.</p><p id="pairError" class="form-error" role="alert"></p><div class="inputrow"><button id="connectSubmit" data-write>Connect</button><button type="button" id="closePair" class="secondary">Cancel</button></div></form>

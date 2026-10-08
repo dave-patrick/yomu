@@ -230,3 +230,7 @@ dialog label{font-size:15px}
   .library-page .reading h2{font-size:17px}
   .library-page .reading{gap:12px;padding-block:18px}
 }
+
+#playlistManager{padding-block:24px;border-top:1px solid var(--line)}
+#playlistManager .actions{max-width:none;flex-wrap:wrap;padding-block:12px;border-bottom:1px solid var(--line)}
+#playlistManager .actions strong{flex:1 1 180px;overflow-wrap:anywhere}

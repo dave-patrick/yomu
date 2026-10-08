@@ -22,8 +22,8 @@ function element(tag, text, className) {
 }
 function playlists(select, current) {
   select.replaceChildren();
-  const placeholder = element('option', 'Choose a playlist'); placeholder.value = ''; select.append(placeholder);
-  for (const playlist of inbox.playlists) {
+  const placeholder = element('option', 'No playlist — save to To read'); placeholder.value = ''; select.append(placeholder);
+  for (const playlist of [...inbox.playlists].sort((a,b)=>a.sortOrder-b.sortOrder || a.name.localeCompare(b.name))) {
     const option = element('option', playlist.name); option.value = playlist.id; select.append(option);
   }
   select.value = current || '';
@@ -59,9 +59,10 @@ function render() {
     row.append(controls); node('newsletterRules').append(row);
   }
   node('newsletterDeliveries').replaceChildren();
-  if (!inbox.deliveries.length) node('newsletterDeliveries').append(element('p', 'No deliveries yet. Start with a sample above.', 'hint'));
+  const visibleDeliveries = inbox.deliveries.filter(d => node('deliveryView').value === 'all' || ['needs_routing','paused','possible_duplicate','queued','failed'].includes(d.state));
+  if (!visibleDeliveries.length) node('newsletterDeliveries').append(element('p', 'Your inbox is clear. New newsletters will appear here.', 'hint'));
   const labels = {needs_routing:'Choose a playlist', possible_duplicate:'Possible duplicate — review before saving', queued:'Preparing', paused:'Rule paused or received before activation', imported:'Saved to library', duplicate:'Duplicate delivery skipped', failed:'Import failed', ignored:'Dismissed', expired:'Preview expired'};
-  for (const delivery of inbox.deliveries) {
+  for (const delivery of visibleDeliveries) {
     const row = element('div', undefined, 'newsletter-row');
     row.append(element('h3', delivery.title), element('p', [delivery.sender, labels[delivery.state] || delivery.state, new Date(delivery.receivedAt).toLocaleString()].filter(Boolean).join(' · ')));
     if (delivery.error) row.append(element('p', delivery.error));
@@ -85,7 +86,7 @@ async function preview(delivery) {
   node('previewWarning').textContent = delivery.state === 'possible_duplicate' ? 'Similar content already arrived. Save only if this is a separate issue.' : content.forwarded ? 'Original sender detected from a forwarded email. Review it carefully before creating an automatic rule; forwarded headers are not sender authentication.' : 'Confirm this is the newsletter’s sender. Inline forwards can show your own address; forwarding as an attachment preserves the original sender.';
   node('previewBody').textContent = content.text;
   playlists(node('destination'));
-  node('createRule').checked = !inbox.rules.some(rule => content.listId ? rule.list_id === content.listId : !rule.list_id && rule.sender === content.sender);
+  node('createRule').checked = false;
   node('routeSubmit').textContent = node('createRule').checked ? 'Save issue & rule' : 'Save this issue';
   node('newsletterPreview').hidden = false;
   node('previewHeading').focus();
@@ -105,10 +106,11 @@ node('sampleForm').onsubmit = event => {
 };
 node('routeForm').onsubmit = event => {
   event.preventDefault(); action(async () => {
-    if (!selected || !node('destination').value) throw new Error('Choose a playlist.');
+    if (!selected) throw new Error('Choose an incoming issue.');
+    if (node('createRule').checked && !node('destination').value) throw new Error('Choose a playlist for automatic routing.');
     await newsletterApi('/deliveries/' + selected.id + '/route', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({playlistId:node('destination').value, createRule:node('createRule').checked})});
     node('newsletterPreview').hidden = true; selected = null;
-    announce('Issue saved. It is ready in To read and the selected playlist.');
+    announce('Issue saved to To read. Any selected playlist is synced to your phone.');
   });
 };
 node('createRule').onchange = () => node('routeSubmit').textContent = node('createRule').checked ? 'Save issue & rule' : 'Save this issue';
@@ -125,3 +127,5 @@ window.addEventListener('storage', event => {
   }
 });
 setInterval(() => {if (!document.hidden && !busy && node('newsletterPreview').hidden) refresh().catch(error => announce(error.message, true));}, 15000);
+
+node('deliveryView').onchange = render;
