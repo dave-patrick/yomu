@@ -57,8 +57,8 @@ An open article can continue while offline; offline first-load/PWA is not includ
   resume; no auto-jump; listening cursor unchanged; offline queue/retry; deliberate
   concurrent-position choice; library defaults across reload; mobile controls.
 - Migration SQL verified against all exported Room v5 table schemas with existing
-  listening values preserved. Instrumented migration test added; physical Android
-  run, TalkBack, and bidirectional phone acceptance remain pending device testing.
+  listening values preserved. All three instrumented migration tests passed on the phone;
+  TalkBack and bidirectional phone acceptance remain pending device testing.
 
 Manual acceptance after install: sync both devices; scroll the phone reader with
 Follow narration off and resume on the website; scroll the website, sync the phone,
