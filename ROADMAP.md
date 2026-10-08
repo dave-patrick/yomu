@@ -1,9 +1,35 @@
 # Yomu product roadmap
 
-Updated 2026-10-07. Covers the Android app, website, Chrome extension, and shared
+Updated 2026-10-08. Covers the Android app, website, Chrome extension, and shared
 sync service. This is a prioritized plan, not an implementation or delivery-date
 commitment. The original Android milestones remain in
 [Pre-development package](YOMU-PRE-DEVELOPMENT-PACKAGE.md).
+
+## Current delivery status — reconciled 2026-10-08
+
+Implementation, installation/deployment, and acceptance are separate. An open checkbox below is an unfinished delivery or acceptance gate; it does not mean every component in that group is unimplemented. This status table takes precedence over the historical initiative sequence.
+
+| Capability | Implementation and rollout | Remaining work |
+|---|---|---|
+| Mobile search and filters | Alpha23 installed and launched on the Galaxy. Magnifying-glass search beside Settings; one filter icon opens labeled type/status/sort choices. 33 JVM tests passed. Search and PDF filter/reset verified on-device. | Broader large-text and TalkBack checks. See docs/MOBILE-SEARCH-FILTERS-2026-10-08.md. |
+| Quiet reading and follow controls | Read quietly, selectable text, Follow narration, and reader controls are present in the installed Android source. | Physical acceptance of quiet reading, active-player targeting, and follow/resume behavior. |
+| Mobile playlist management | Rename/delete/counts/reorder, membership labels, and bulk playlist actions are implemented in the installed Android source. | Device walkthrough for each operation and cross-device consistency. Extension playlist creation/recent destinations remain planned. |
+| Bulk management and recovery | Selection, queue/archive/read/playlist/delete actions and local recoverable deletion are implemented. | Restore/delete identity, offline conflicts, retention, and restore-during-work acceptance. No destructive real-library fixtures. |
+| Tags, bookmarks, highlights, notes | Phone editing, anchored return, listening bookmarks, and Markdown export are implemented. | Server capability support and cross-device synchronization; broader device validation. Local availability is not proof of shared sync. |
+| Originals and health tools | Original availability/download/export, import retry/cancel, storage measurements, inactive speech-cache cleanup, Wi-Fi/charging preferences, and resume rewind are implemented. | Recovery, metered/background behavior, cancellation, and cache-cleanup acceptance. |
+| Import/sync reliability | Concurrent-edit preservation, isolated original-upload failures, and durable document jobs have implementation changes. Live sync status/retry classification exists. | Isolated regression tests for interruption, large files, restore concurrency, incompatible records, and one-way modes. |
+| Reading resume/defaults | Separate reading cursors, shared defaults, conflict choices, and browser offline retry are implemented; Android release is installed. | Phone to website and website to phone, offline, multi-tab, one-way, and TalkBack acceptance. |
+| Website library and themes | Compact library layout, search popup, and icon-only theme toggle beside Settings are deployed and verified. | Broader accessibility and real-data workflow checks. |
+| Extension 0.2.0 | Source implements saving, playlists, pairing, themes, and duplicate handling; mocked checks pass. | Installed/reloaded target-browser version and real permission/save/playlist/phone-sync walkthrough remain unconfirmed. Not published to an extension store. |
+| Newsletter email intake | AgentMail signed receiver, omitted-body recovery, deduplication, preview/routing, and ready-text import are implemented and deployed; 29 backend tests previously passed. | Reconnect the provider account, configure or verify inbox-scoped webhook and private Render credentials, then receive two real issues and verify routing/phone sync. |
+
+### Next work
+
+1. Finish AgentMail live receiving and newsletter-to-playlist acceptance.
+2. Verify mobile reliability/recovery and cross-device reading rather than rebuilding existing controls.
+3. Complete shared tags/annotations compatibility and synchronization.
+4. Validate the installed extension, then add faster playlist and explicit excerpt/link capture.
+5. Keep browser audio deferred; mailbox OAuth/backfill, server extraction, Raindrop, offline web, and public distribution remain separate future tracks.
 
 ## Product direction
 
@@ -21,7 +47,7 @@ Android now separates the To read “Play now” menu from the hold-to-queue ges
 shows gesture help and long-press accessibility labels, and observes sync attempts,
 successes, failures, and busy state live. Permanent authentication/server-library
 errors pause automatic retries; transient network errors keep retrying. The APK
-is installed through alpha17 and unit-tested; broader device/TalkBack acceptance
+is installed through alpha23 and unit-tested; broader device/TalkBack acceptance
 remains pending. Reader transitions, screen-off preparation, HD buffering, and
 live voice changes have subsequent fixes documented in their delivery notes.
 
@@ -36,9 +62,7 @@ cross-device reading cursors, explicit Resume reading, offline browser position
 retry, conflict choices, shared font/size/spacing defaults with device overrides,
 and phone Follow narration. See [Resume delivery](docs/CROSS-DEVICE-RESUME-2026-10-07.md).
 
-Remaining: phone Read quietly entry point and selectable text,
-broader large-text/TalkBack coverage, and playlist feature
-parity. The grouped checklists below remain open until their full criteria pass.
+Phone Read quietly, selectable text, and playlist controls are implemented in the installed Alpha23 source; their broader physical acceptance and large-text/TalkBack coverage remain open. The grouped checklists below remain open until their full criteria pass.
 
 Validation and implementation details: [Usability pass](docs/USABILITY-PASS-2026-10-06.md).
 
@@ -75,24 +99,9 @@ passed; gesture acceptance remains pending. See [Swipe adjustment](docs/SWIPE-AC
 
 ## Priority assessment
 
-### Top five remaining priorities — 2026-10-07
+### Current priorities — 2026-10-08
 
-1. **Reliability and recovery (P0/P1):** protect edits/deletes during import,
-   coordinate restore with active work, and finish interrupted/large-file sync
-   recovery and acceptance checks (R01–R08/R32). Recent playback generation fixes
-   are delivered; the broader reliability group remains open.
-2. **Actionable import/sync status (P1):** finish last-attempt/success, pending
-   changes where tracked, per-item retry, and permanent-versus-transient errors
-   across surfaces (R12). The first usability/status pass is implemented.
-3. **Phone quiet reading and follow controls (P1):** Read quietly, selectable text,
-   Follow narration, and clear controls when displayed and playing items differ
-   (R15). Reader article-transition fixes are delivered; this feature remains open.
-4. **Cross-device reading resume (P1):** canonical text anchors, separate reading
-   and listening positions, offline recovery, and shared reader defaults (R22/Wave 3).
-   Implementation is built and tested; alpha18 is installed. Physical
-   bidirectional acceptance remain pending.
-5. **Playlist management and capture (P1):** rename/delete/counts/reorder,
-   visible membership, and faster/recoverable extension destinations (R17/R21).
+The next-work list above is authoritative. Reliability/recovery, actionable status acceptance, cross-device resume, shared tags/annotations, and live email receiving remain open. Quiet reading, mobile playlist management, search/filtering, bulk actions, and health tools already have installed implementations; complete their acceptance checks instead of treating them as new feature builds.
 
 The table below describes the original initiative sequence, including partly
 delivered work. The dedicated website reader and initial library action cleanup
@@ -122,7 +131,7 @@ P1 is the next product work; P2 follows the core experience; P3 needs separate s
 | 14 | P3 | Offline web/PWA and web MP3 export | Website/backend | L–XL | Storage/privacy/export decisions should follow stable reading and audio |
 | 15 | P3 | Public distribution readiness | App/extension/backend | XL | Only if the owner chooses distribution beyond personal use |
 
-## Newsletter capture — planned 2026-10-07
+## Newsletter capture — implemented intake, live acceptance pending
 
 Implemented initial milestone: Settings > Newsletters, .eml preview, explicit
 newsletter-to-playlist rules, ready server-extracted text, durable retry/replay
@@ -144,8 +153,7 @@ privacy, rule behavior, dependencies, and acceptance gates.
 
 A full source and bounded interface review is recorded in
 [Product review and enhancement backlog](docs/PRODUCT-REVIEW-2026-10-06.md).
-R identifiers refer to that review. These are planned refinements and additions;
-the review did not deploy fixes or verify all phone/browser runtime paths.
+R identifiers refer to that review. This was the original review backlog. Subsequent releases implemented parts of these groups; the current delivery table records that work. Remaining open groups combine further implementation with acceptance checks.
 
 ### Priority changes and immediate gates
 
@@ -193,8 +201,8 @@ that the review demonstrated production data loss.
   network retries and show real per-item extraction state (R12–R13).
 - [ ] Add stable reader/list URLs, Back/search restoration, accurate duplicate
   feedback, contextual empty views, and completion-date history (R13–R14).
-- [ ] Add phone Read quietly, selectable text, Follow narration control, and a
-  deliberate command target when displayed and playing items differ (R15).
+- [ ] Verify installed phone Read quietly, selectable text, Follow narration, and
+  command targeting when displayed and playing items differ (R15).
 - [ ] Verify keyboard upload, dialog naming, navigation selection, progress
   semantics, large text/TalkBack, touch targets, overflow, and theme parity (R16).
 - [ ] Add source/original links and explicit original download availability across
@@ -202,10 +210,10 @@ that the review demonstrated production data loss.
 
 ### Add to Wave 4 and the scale track
 
-- [ ] Add playlist rename/delete/counts/reorder and faster extension destinations;
-  make duplicate membership feedback clear (R17).
-- [ ] Design recoverable deletion/undo with retention and cross-device identity
-  rules before implementation; keep it distinct from Archive (R19).
+- [ ] Verify installed phone playlist rename/delete/counts/reorder and membership
+  feedback; build faster extension destinations (R17).
+- [ ] Verify implemented local recoverable deletion/undo; complete retention and
+  cross-device identity rules, keeping recovery distinct from Archive (R19).
 - [ ] Extend filters/search/sorting to phone and website, with optional saved views
   after shared tags/search are reliable (R20).
 - [ ] Persist extension save intents/results and resume playlist completion after
@@ -249,9 +257,9 @@ reader, sync policy, and listening controls follow their respective waves.
 Priority: P1; effort: S. Ship independently of the full reader.
 
 - [x] Offer Light, Dark, and System in website Settings and save the preference for this browser.
-- [ ] Add a visible light/dark button in the left navigation for switching without opening Settings.
-- [ ] Show the active theme and label the action clearly; keep the button keyboard-accessible.
-- [ ] Keep the navigation button and Settings selector in sync. An explicit toggle selects
+- [x] Provide an icon-only light/dark toggle beside the Settings gear (owner-requested placement).
+- [x] Show the theme action through the icon, tooltip, and accessible label; keep it keyboard-accessible.
+- [x] Keep the toolbar button and Settings selector in sync. An explicit toggle selects
   Light or Dark; choosing System in Settings restores automatic OS theme following.
 - [ ] Apply consistent theme colors to the library, reader, settings, roadmap, dialogs,
   menus, inputs, source-icon tiles, and focus indicators.
@@ -261,7 +269,7 @@ Priority: P1; effort: S. Ship independently of the full reader.
 
 Gate: switching from navigation updates the whole website and its Settings value;
 System follows OS changes; preferences remain browser-local and do not change the
-phone or extension theme. The left-navigation toggle is planned, not yet implemented.
+phone or extension theme. The toolbar theme icon is deployed; the original left-navigation placement was superseded by the owner.
 
 ### Wave 0 — Establish a dependable baseline
 
@@ -344,8 +352,8 @@ player unexpectedly; old clients retain their libraries and settings.
 
 - [ ] Extension: create a playlist during save and remember recent/favorite destinations.
   To read remains the default; playlist membership does not remove it from To read.
-- [ ] Website/app: bulk select and add to playlist, queue, archive, or delete. Show the
-  selected count and clear confirmation for destructive actions; prefer recoverable undo.
+- [ ] Verify installed phone bulk selection/actions and recovery; complete website
+  parity. Show selected counts and clear destructive-action feedback.
 - [ ] Add shared tags, then source/type/read-state/tag filters and improved text search.
   Keep tags as flexible labels and playlists as ordered collections.
 - [ ] Extension: right-click Save link, with explicit user action and narrow permissions.
@@ -424,7 +432,7 @@ real Chrome validation passes.
 - Accessibility, light/dark consistency, clear errors, and privacy are part of each
   feature's completion gate, not a final cleanup phase.
 - Track implemented, deployed/installed, and device-verified separately. Update this
-  roadmap with evidence; unchecked items remain planned even if prototypes exist.
+  roadmap with evidence; unchecked grouped items remain open delivery/acceptance gates; consult the current status table for implemented and installed portions.
 - Revisit browser-native voice value, shared preference defaults, Raindrop mapping,
   retention policy, and public distribution before their respective implementations.
 - No dates or new recurring costs are committed. Refine effort after each wave and
@@ -436,4 +444,4 @@ AgentMail selected for the initial free receiving inbox. Signed receiver, omitte
 
 ### Library search refinement — 2026-10-07
 
-Delivered: compact magnifying-glass search beside the Settings gear, a theme-aware popup with automatic focus and keyboard/outside dismissal, retained filtering and visible clear-search action. Desktop/mobile interaction and layout verified.
+Delivered: compact magnifying-glass search beside the Settings gear, a theme-aware popup with automatic focus and keyboard/outside dismissal, retained filtering and visible clear-search action. Website desktop/mobile viewport interaction and layout verified. Native Android search/filter delivery is tracked separately in the Alpha23 status above.

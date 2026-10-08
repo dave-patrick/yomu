@@ -25,7 +25,7 @@ for line in lines:
     elif line.startswith('|'): table.append(line)
     elif line.startswith('- '):
         if paragraph:flush()
-        items.append(line[2:].replace('[ ]','Planned:').replace('[x]','Complete:'))
+        items.append(line[2:].replace('[ ]','Open:').replace('[x]','Complete:'))
     elif items: items[-1]+=' '+line.strip()
     else: paragraph.append(line.strip())
 flush()
