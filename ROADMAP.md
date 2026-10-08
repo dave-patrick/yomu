@@ -21,7 +21,7 @@ Implementation, installation/deployment, and acceptance are separate. An open ch
 | Reading resume/defaults | Separate reading cursors, shared defaults, conflict choices, and browser offline retry are implemented; Android release is installed. | Phone to website and website to phone, offline, multi-tab, one-way, and TalkBack acceptance. |
 | Website library and themes | Compact library layout, search popup, and icon-only theme toggle beside Settings are deployed and verified. | Broader accessibility and real-data workflow checks. |
 | Extension 0.2.0 | Source implements saving, playlists, pairing, themes, and duplicate handling; mocked checks pass. | Installed/reloaded target-browser version and real permission/save/playlist/phone-sync walkthrough remain unconfirmed. Not published to an extension store. |
-| Newsletter email intake | AgentMail signed receiver, omitted-body recovery, deduplication, preview/routing, and ready-text import are implemented and deployed; 29 backend tests previously passed. | Reconnect the provider account, configure or verify inbox-scoped webhook and private Render credentials, then receive two real issues and verify routing/phone sync. |
+| Newsletter email intake | AgentMail inbox-scoped message.received webhook enabled; permanent inbox read-only key and signing secret saved in Render and deployed. 29 backend tests pass. Existing forwarded issue manually backfilled through the live signed receiver; original sender detected, ready text saved to To read and the new Newsletters playlist, automatic sender rule enabled. | Fresh provider delivery and automatic routing of a distinct issue; phone sync check (phone locked). Manual backfill is not proof of provider webhook delivery. See docs/AGENTMAIL-LIVE-SETUP-2026-10-08.md. |
 
 ### Next work
 
@@ -440,7 +440,7 @@ real Chrome validation passes.
 
 ### Newsletter provider decision — 2026-10-07
 
-AgentMail selected for the initial free receiving inbox. Signed receiver, omitted-body recovery, single-inbox scope, and existing playlist routing implemented. Next acceptance gate: configure private provider credentials/webhook, receive a real forwarded newsletter, confirm its source and playlist rule, then verify the next issue imports automatically and syncs to Android. See [AgentMail setup](docs/AGENTMAIL-SETUP.md). Mailbox OAuth capture and historical backfill remain later work.
+AgentMail selected for the initial free receiving inbox. Signed receiver, omitted-body recovery, single-inbox scope, and existing playlist routing implemented. Private provider credentials and an inbox-scoped message.received webhook are now configured and deployed. An existing forwarded newsletter was manually backfilled through the live signed receiver, reviewed, and saved with an active rule to Newsletters. Next acceptance gate: fresh provider delivery, automatic routing of a distinct issue, and Android sync. The manual backfill does not prove provider delivery. See [AgentMail setup](docs/AGENTMAIL-SETUP.md). Mailbox OAuth capture and historical backfill remain later work.
 
 ### Library search refinement — 2026-10-07
 
