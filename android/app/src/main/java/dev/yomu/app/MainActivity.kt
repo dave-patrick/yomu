@@ -49,7 +49,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Check
@@ -442,6 +443,15 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
             delay(1_400)
             showBrandSplash = false
         }
+        var showSearch by rememberSaveable { mutableStateOf(false) }
+        var libraryQuery by rememberSaveable(destination) { mutableStateOf("") }
+        if (showSearch) AlertDialog(
+            onDismissRequest = { showSearch = false },
+            title = { Text("Search your library") },
+            text = { OutlinedTextField(libraryQuery, { libraryQuery = it }, label = { Text("Title, text, source or tag") }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+            confirmButton = { TextButton(onClick = { showSearch = false }) { Text("Done") } },
+            dismissButton = { TextButton(onClick = { libraryQuery = "" }) { Text("Clear") } },
+        )
         var showSettings by rememberSaveable { mutableStateOf(false) }
         var showAbout by rememberSaveable { mutableStateOf(false) }
         var showAdd by rememberSaveable { mutableStateOf(false) }
@@ -554,6 +564,9 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                     },
                     actions = {
                         if (!showSettings && !showAbout && reading == null && selectedPlaylist == null) {
+                            if (destination == Destination.TO_READ || destination == Destination.UP_NEXT) {
+                                IconButton(onClick = { showSearch = true }) { Icon(Icons.Default.Search, contentDescription = "Search your library", tint = if (libraryQuery.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary) }
+                            }
                             IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
                         } else if (showSettings) {
                             IconButton(onClick = {
@@ -683,7 +696,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                     }, onRemoveQueue = {}, onSelectPlaylist = { playlistItemPending = it }, modifier = Modifier.padding(padding),
                         sortMode = toReadSortMode,
                         onSortModeChange = { mode, _ -> toReadSortMode = mode; libraryPrefs.edit().putString("to_read_sort", mode).apply() },
-                        vm = vm, showSortPicker = true, allowReorder = toReadSortMode == "Manual",
+                        externalQuery = libraryQuery, vm = vm, showSortPicker = true, allowReorder = toReadSortMode == "Manual",
                         onMoveItemUp = { vm.moveToReadItem(it.id, -1) }, onMoveItemDown = { vm.moveToReadItem(it.id, 1) },
                         showDurations = false, swipeRightAction = swipeRightAction, swipeLeftAction = swipeLeftAction, itemSpacingDp = listSpacingDp,
                         archiveActionEnabled = true, readStateActionEnabled = true,
@@ -693,7 +706,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                     Destination.UP_NEXT -> LibraryList(upNext, emptyLabel = "Up next is clear", hint = "Hold an item in To read to add it here. Tap a queued item to play.", onTap = { if (it.importState == "failed") vm.retryImport(it.id) else vm.startNow(it.id) }, onPlayNow = { if (it.importState == "failed") vm.retryImport(it.id) else vm.startNow(it.id) }, onRemoveQueue = { vm.removeFromQueue(it.id) }, onSelectPlaylist = { playlistItemPending = it }, modifier = Modifier.padding(padding), queueMode = true,
                         sortMode = upNextSortMode,
                         onSortModeChange = { mode, sorted -> upNextSortMode = mode; libraryPrefs.edit().putString("up_next_sort", mode).apply(); vm.reorderQueue(sorted.map { it.id }) },
-                        vm = vm, showSortPicker = true, allowReorder = upNextSortMode == "Manual", swipeRightAction = swipeRightAction, swipeLeftAction = swipeLeftAction,
+                        externalQuery = libraryQuery, vm = vm, showSortPicker = true, allowReorder = upNextSortMode == "Manual", swipeRightAction = swipeRightAction, swipeLeftAction = swipeLeftAction,
                         onMoveItemUp = { vm.moveQueueItem(it.id, -1) }, onMoveItemDown = { vm.moveQueueItem(it.id, 1) }, itemSpacingDp = listSpacingDp,
                         archiveActionEnabled = true, readStateActionEnabled = true,
                         onMarkStateChange = { if (it.completed) vm.markItemUnread(it.id) else vm.markItemRead(it.id) },
@@ -761,6 +774,7 @@ private enum class Destination(val title: String, val icon: androidx.compose.ui.
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun LibraryList(
     rows: List<ReadingListRow>, emptyLabel: String, hint: String,
     onTap: (ReadingListRow) -> Unit, onPlayNow: (ReadingListRow) -> Unit,
@@ -781,12 +795,15 @@ private fun LibraryList(
     onMenuPlay: (ReadingListRow) -> Unit = onPlayNow,
     longPressLabel: String = "Play now",
     vm: LibraryViewModel? = null,
+    externalQuery: String? = null,
 ) {
     val effectiveSortMode = if (!showDurations && sortMode in setOf("Shortest", "Longest")) "Newest" else sortMode
     val allItems = if (vm != null) vm.allItems.collectAsStateWithLifecycle().value else emptyList()
     val memberships = if (vm != null) vm.memberships.collectAsStateWithLifecycle().value else emptyList()
     val playlists = if (vm != null) vm.playlists.collectAsStateWithLifecycle().value else emptyList()
-    var query by rememberSaveable { mutableStateOf("") }
+    var localQuery by rememberSaveable { mutableStateOf("") }
+    val query = externalQuery ?: localQuery
+    var showFilters by rememberSaveable { mutableStateOf(false) }
     var typeFilter by rememberSaveable { mutableStateOf("All types") }
     var stateFilter by rememberSaveable { mutableStateOf("All states") }
     var selectionMode by rememberSaveable { mutableStateOf(false) }
@@ -810,6 +827,23 @@ private fun LibraryList(
     if (bulkPlaylist) AlertDialog(onDismissRequest = { bulkPlaylist = false }, title = { Text("Add ${selected.size} items to playlist") },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) { playlists.forEach { playlist -> TextButton(onClick = { vm?.bulkAction(selected, "Playlist", playlist.id); selected = emptySet(); bulkPlaylist = false }) { Text(playlist.name) } } } },
         confirmButton = { TextButton(onClick = { bulkPlaylist = false }) { Text("Close") } })
+    if (showFilters) ModalBottomSheet(onDismissRequest = { showFilters = false }) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Filter your library", style = MaterialTheme.typography.headlineSmall)
+            LibraryFilterChoices("Document type", listOf("All types", "Articles", "PDF", "Word (.docx)", "Word (.doc)", "Text"), when(typeFilter) { "url" -> "Articles"; "pdf" -> "PDF"; "docx" -> "Word (.docx)"; "doc" -> "Word (.doc)"; "text" -> "Text"; else -> "All types" }) {
+                typeFilter = when(it) { "Articles" -> "url"; "PDF" -> "pdf"; "Word (.docx)" -> "docx"; "Word (.doc)" -> "doc"; "Text" -> "text"; else -> "All types" }
+            }
+            LibraryFilterChoices("Reading status", listOf("All states", "Ready", "Needs attention", "Partly heard", "Read", "Unread"), stateFilter) { stateFilter = it }
+            if (showSortPicker) LibraryFilterChoices("Sort by", if (showDurations) librarySortOptions else listOf("Manual", "Newest", "Oldest", "Title A–Z"), effectiveSortMode) {
+                onSortModeChange(it, sortLibraryRows(rows, it, queueMode))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = { typeFilter = "All types"; stateFilter = "All states" }) { Text("Reset filters") }
+                Button(onClick = { showFilters = false }) { Text("Show ${shownRows.size} items") }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+    }
     Column(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(collectionLabel ?: if (queueMode) "Your listening order" else "Saved for when you have a moment", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -817,12 +851,15 @@ private fun LibraryList(
             val totalMinutes = shownRows.sumOf { it.estimatedSecondsAtOneX } / 60
             if (showDurations && shownRows.isNotEmpty()) Text("${shownRows.size} items  ·  ${formatDuration(totalMinutes * 60)} total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             if (vm != null) {
-                OutlinedTextField(query, { query = it }, label = { Text("Search title, text, source or tag") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MenuChoiceDropdown("Type", typeFilter, listOf("All types", "url", "pdf", "docx", "doc", "text")) { typeFilter = it }
-                    MenuChoiceDropdown("State", stateFilter, listOf("All states", "Ready", "Needs attention", "Partly heard", "Read", "Unread")) { stateFilter = it }
+                if (externalQuery == null) OutlinedTextField(query, { localQuery = it }, label = { Text("Search title, text, source or tag") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                else if (query.isNotBlank()) Text("Search: $query", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { showFilters = true }) {
+                        Icon(Icons.Default.FilterList, contentDescription = "Filter and sort library", tint = if (typeFilter != "All types" || stateFilter != "All states") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text(listOfNotNull(typeFilter.takeUnless { it == "All types" }?.let { when(it) { "url" -> "Articles"; "docx" -> "Word (.docx)"; "doc" -> "Word (.doc)"; else -> it.uppercase() } }, stateFilter.takeUnless { it == "All states" }, effectiveSortMode.takeIf { showSortPicker }).joinToString(" · "), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { selectionMode = !selectionMode; selected = emptySet() }) { Text(if (selectionMode) "Done selecting" else "Select items") }
                 }
-                TextButton(onClick = { selectionMode = !selectionMode; selected = emptySet() }) { Text(if (selectionMode) "Done selecting" else "Select items") }
                 if (selectionMode) {
                     Text("${selected.size} selected", style = MaterialTheme.typography.labelMedium)
                     Row(Modifier.horizontalScroll(rememberScrollState())) {
@@ -833,9 +870,7 @@ private fun LibraryList(
                     }
                 }
             }
-            if (showSortPicker) MenuChoiceDropdown("Sort", effectiveSortMode, if (showDurations) librarySortOptions else listOf("Manual", "Newest", "Oldest", "Title A–Z")) { choice ->
-                onSortModeChange(choice, sortLibraryRows(rows, choice, queueMode))
-            }
+
         }
         if (shownRows.isEmpty()) {
             Column(Modifier.fillMaxSize().padding(horizontal = 32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -863,6 +898,17 @@ private fun LibraryList(
                         membershipLabel = memberships.filter { it.itemId == row.id }.mapNotNull { membership -> playlists.find { it.id == membership.playlistId }?.name }.joinToString(", "))
                 }
             }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun LibraryFilterChoices(label: String, options: List<String>, selected: String, onSelect: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.titleSmall)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            options.forEach { option -> FilterChip(selected = option == selected, onClick = { onSelect(option) }, label = { Text(option) }) }
         }
     }
 }
