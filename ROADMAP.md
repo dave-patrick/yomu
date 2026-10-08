@@ -433,3 +433,7 @@ real Chrome validation passes.
 ### Newsletter provider decision — 2026-10-07
 
 AgentMail selected for the initial free receiving inbox. Signed receiver, omitted-body recovery, single-inbox scope, and existing playlist routing implemented. Next acceptance gate: configure private provider credentials/webhook, receive a real forwarded newsletter, confirm its source and playlist rule, then verify the next issue imports automatically and syncs to Android. See [AgentMail setup](docs/AGENTMAIL-SETUP.md). Mailbox OAuth capture and historical backfill remain later work.
+
+### Library search refinement — 2026-10-07
+
+Delivered: compact magnifying-glass search beside the Settings gear, a theme-aware popup with automatic focus and keyboard/outside dismissal, retained filtering and visible clear-search action. Desktop/mobile interaction and layout verified.

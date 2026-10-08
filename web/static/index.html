@@ -24,12 +24,13 @@
   </details>
 </aside>
 <main id="main" tabindex="-1">
-  <header><div><h1 id="heading" tabindex="-1">To read</h1><p id="summary">Your articles and documents, together.</p></div><button id="refresh" class="secondary" title="Check for updates from your other devices">Sync now</button></header>
+  <header><div><h1 id="heading" tabindex="-1">To read</h1><p id="summary">Your articles and documents, together.</p></div><div class="header-actions"><button id="refresh" class="secondary" title="Check for updates from your other devices">Sync now</button><button id="openSearch" class="icon-button" popovertarget="searchPopup" aria-label="Search your library" aria-expanded="false" aria-controls="searchPopup" title="Search your library"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg></button><a class="icon-button" href="/settings.html" aria-label="Settings" title="Settings"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="m9 3-.7 2.3-2 .9L4 5.7 2.5 8.3 4.2 10v3l-1.7 1.7L4 17.3l2.3-.5 2 .9L9 20h3l.7-2.3 2-.9 2.3.5 1.5-2.6L16.8 13v-3l1.7-1.7L17 5.7l-2.3.5-2-.9L12 3Z"/><circle cx="10.5" cy="11.5" r="3"/></svg></a></div></header>
   <section class="save" aria-label="Save content">
     <form id="saveLink"><label for="url">Save an article</label><div class="inputrow"><input id="url" type="url" placeholder="Paste an article link" required><button data-write>Save to Yomu</button></div></form>
     <div class="drop" id="drop"><p>Drop documents here, or <button id="browseFiles" class="text-button" data-write>browse files</button></p><input class="visually-hidden" type="file" id="files" aria-label="Choose documents to save" accept=".pdf,.docx,.txt" multiple tabindex="-1"><small>PDF, Word (.docx), or text · up to 20 MB each</small></div>
   </section>
-  <div class="filter"><input id="search" type="search" placeholder="Search your library" aria-label="Search your library"><span id="count"></span></div>
+  <div class="filter"><span id="count" role="status"></span><button id="clearSearch" class="quiet search-filter" hidden></button></div>
+  <div id="searchPopup" class="search-popup" popover aria-labelledby="searchTitle"><form id="searchForm" role="search"><div class="search-heading"><label id="searchTitle" for="search">Search your library</label><button id="closeSearch" type="button" class="icon-button" aria-label="Close search"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><input id="search" type="search" placeholder="Title, source, or text" autocomplete="off"><p class="hint">Filters the current list as you type.</p></form></div>
   <p id="notice" role="status" aria-live="polite" aria-atomic="true"></p>
   <section id="library" aria-label="Saved reading"></section>
 </main>

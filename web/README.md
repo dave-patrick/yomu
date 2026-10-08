@@ -100,3 +100,5 @@ The optional Postmark receiving hook stays disabled until `YOMU_NEWSLETTER_WEBHO
 Validation: `python -m unittest test_sync test_newsletters test_agentmail` from this folder uses an isolated temporary database.
 
 AgentMail is the selected provider. Its signed receiver is `/hooks/newsletters/agentmail`; set `AGENTMAIL_API_KEY`, `AGENTMAIL_WEBHOOK_SECRET`, `AGENTMAIL_INBOX_ID`, and `YOMU_NEWSLETTER_ADDRESS` privately on Render. See [AgentMail setup](../docs/AGENTMAIL-SETUP.md). Receiving stays disabled until all three AgentMail credentials/identity variables are present.
+
+Library search opens from the magnifying-glass button beside the Settings gear. The popup focuses the search field, filters the selected list live, preserves the active query when dismissed, and offers a visible clear action. Escape, Close, Enter, and outside clicks dismiss it; browser-native popover behavior is used.

@@ -180,7 +180,11 @@ function render() {
     });
   $('heading').textContent = availableViews.find(([id]) => id === view)?.[1] || 'Playlist';
   $('summary').textContent = summaries[view] || 'A playlist shares reading progress with the rest of your library.';
-  const items = model.selectItems(snapshot, view, $('search').value);
+  const query = $('search').value;
+  $('openSearch').classList.toggle('has-query', !!query);
+  $('clearSearch').hidden = !query;
+  $('clearSearch').textContent = query ? 'Clear search: ' + query : '';
+  const items = model.selectItems(snapshot, view, query);
   $('count').textContent = items.length + (items.length === 1 ? ' item' : ' items');
   const dates = model.historyDates(snapshot);
   if (!items.length) {
@@ -434,6 +438,24 @@ $('drop').ondragover = event => { event.preventDefault(); };
 $('drop').ondrop = event => { event.preventDefault(); if (!key || writeDepth) { notice('Connect your library and finish the current change before uploading.'); return; } upload(event.dataTransfer.files); };
 $('refresh').onclick = () => refresh();
 $('search').oninput = render;
+function positionSearch() {
+  const anchor = $('openSearch').getBoundingClientRect();
+  const popup = $('searchPopup');
+  popup.style.left = Math.max(16, Math.min(anchor.right - popup.offsetWidth, innerWidth - popup.offsetWidth - 16)) + 'px';
+  popup.style.top = Math.max(16, Math.min(anchor.bottom + 8, innerHeight - popup.offsetHeight - 16)) + 'px';
+}
+$('searchPopup').addEventListener('toggle', event => {
+  const open = event.newState === 'open';
+  $('openSearch').setAttribute('aria-expanded', String(open));
+  if (open) { positionSearch(); $('search').focus(); }
+});
+window.addEventListener('resize', () => { if ($('searchPopup').matches(':popover-open')) positionSearch(); });
+function closeSearch() { $('searchPopup').hidePopover(); $('openSearch').focus(); }
+$('closeSearch').onclick = closeSearch;
+$('search').addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeSearch(); } });
+$('searchForm').onsubmit = event => { event.preventDefault(); $('searchPopup').hidePopover(); $('openSearch').focus(); };
+$('clearSearch').onclick = () => { $('search').value = ''; render(); $('openSearch').focus(); };
+
 $('pairButton').onclick = openPair;
 $('closePair').onclick = () => $('pair').close();
 $('closeName').onclick = () => $('nameDialog').close();
