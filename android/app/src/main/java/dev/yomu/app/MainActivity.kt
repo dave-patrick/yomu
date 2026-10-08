@@ -878,15 +878,17 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                             onReadQuietly: () -> Unit = {}, quietAvailable: Boolean = false, membershipLabel: String = "") {
     var menu by remember { mutableStateOf(false) }
     val ready = row.importState == "ready"
-    val swipeState = rememberSwipeToDismissBoxState()
-    LaunchedEffect(swipeState.currentValue) {
-        val action = when (swipeState.currentValue) {
+    val swipeState = rememberSwipeToDismissBoxState(
+        positionalThreshold = { rowWidth -> rowWidth * 0.55f },
+    )
+    LaunchedEffect(swipeState.settledValue) {
+        val action = when (swipeState.settledValue) {
             SwipeToDismissBoxValue.StartToEnd -> swipeRightAction
             SwipeToDismissBoxValue.EndToStart -> swipeLeftAction
             SwipeToDismissBoxValue.Settled -> "Off"
         }
         if (action != "Off") onSwipeAction(action)
-        if (swipeState.currentValue != SwipeToDismissBoxValue.Settled) swipeState.reset()
+        if (swipeState.settledValue != SwipeToDismissBoxValue.Settled) swipeState.reset()
     }
     SwipeToDismissBox(
         state = swipeState,

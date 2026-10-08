@@ -69,6 +69,10 @@ following and uses the live playback sentence for highlighting/automatic scrolli
 33 unit tests and four device migration tests passed; resumed-playback visual
 acceptance remains pending. See [Resume highlight fix](docs/RESUMED-HIGHLIGHT-2026-10-07.md).
 
+Installed 2026-10-07: Alpha20 increases library swipe activation to 55% of row
+width and dispatches actions only after the swipe settles. Build/install/launch
+passed; gesture acceptance remains pending. See [Swipe adjustment](docs/SWIPE-ACTIVATION-2026-10-07.md).
+
 ## Priority assessment
 
 ### Top five remaining priorities — 2026-10-07
