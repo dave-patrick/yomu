@@ -95,6 +95,8 @@ and device acceptance status. Browser audio remains planned.
 
 Settings > Newsletters supports .eml samples, safe text preview, one-playlist routing rules, and delivery review/retry. Email-body imports produce ready synced items without phone extraction. The durable queue runs inside this service using its existing SQLite disk; no separate worker or Redis is provisioned.
 
-The optional Postmark receiving hook stays disabled until `YOMU_NEWSLETTER_WEBHOOK_SECRET` (a separate random secret, minimum 32 characters) is configured. `YOMU_NEWSLETTER_ADDRESS` displays the actual inbound address privately in newsletter settings. The hook uses HTTPS Basic authentication with username `yomu`; do not reuse the library access key. Account setup and real email receipt remain outstanding. See [newsletter delivery/setup](../docs/NEWSLETTER-DELIVERY-2026-10-07.md).
+The optional Postmark receiving hook stays disabled until `YOMU_NEWSLETTER_WEBHOOK_SECRET` (a separate random secret, minimum 32 characters) is configured. `YOMU_NEWSLETTER_ADDRESS` displays the actual inbound address privately in newsletter settings. The hook uses HTTPS Basic authentication with username `yomu`; do not reuse the library access key. Postmark remains available as an alternative provider. See [newsletter delivery/setup](../docs/NEWSLETTER-DELIVERY-2026-10-07.md).
 
-Validation: `python -m unittest test_sync test_newsletters` from this folder uses an isolated temporary database.
+Validation: `python -m unittest test_sync test_newsletters test_agentmail` from this folder uses an isolated temporary database.
+
+AgentMail is the selected provider. Its signed receiver is `/hooks/newsletters/agentmail`; set `AGENTMAIL_API_KEY`, `AGENTMAIL_WEBHOOK_SECRET`, `AGENTMAIL_INBOX_ID`, and `YOMU_NEWSLETTER_ADDRESS` privately on Render. See [AgentMail setup](../docs/AGENTMAIL-SETUP.md). Receiving stays disabled until all three AgentMail credentials/identity variables are present.

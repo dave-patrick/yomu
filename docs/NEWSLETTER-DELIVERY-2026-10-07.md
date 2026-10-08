@@ -16,9 +16,9 @@ Implemented 2026-10-07. Website Settings links to Newsletters. The first usable 
 
 ## External receiving setup still required
 
-No receiving account, domain, mailbox connection, or provider spend has been enabled. .eml upload and routing work independently. Live email arrival is unverified until a real provider account is connected and a real newsletter is forwarded.
+The owner selected AgentMail and created an inbox. Live webhook connection and real receipt remain pending; no paid provider plan has been enabled. .eml upload and routing work independently. Live email arrival is unverified until a real provider account is connected and a real newsletter is forwarded.
 
-Postmark is the proposed first adapter because its inbound stream provides an address without requiring a custom domain. Confirm account availability and cost with the owner before provisioning. Official setup: https://postmarkapp.com/developer/user-guide/inbound/configure-an-inbound-server
+AgentMail is now the selected provider; see [AgentMail setup](AGENTMAIL-SETUP.md). The original Postmark adapter remains an alternative. Official setup: https://postmarkapp.com/developer/user-guide/inbound/configure-an-inbound-server
 
 Configure the existing Render service with:
 
@@ -37,3 +37,7 @@ Provider delivery/authentication, recipient-address rotation, connection deletio
 - Isolated real FastAPI/SQLite backend with headless Chrome passed sample upload, preview, rule save, second-issue automatic routing, ready library records, membership, no playback/queue mutation, no console errors, and narrow-screen overflow checks. Light/dark desktop/mobile captures were inspected in bounded passes.
 - Android alpha21 built successfully, was installed in place over local Wi-Fi, and version/launch were confirmed. Real forwarded-mail and physical newsletter playback acceptance remain open.
 - Fixture servers/data were isolated from the production library. No synthetic issues were written to the live service.
+
+## AgentMail follow-up
+
+Signed AgentMail intake has been implemented with Svix verification, a single allowed inbox, fixed-host bounded API recovery for omitted bodies/headers, and existing durable ingestion/routing. Spam, blocked, and unauthenticated event types are ignored. Failed provider retrieval returns 503 for provider retry rather than acknowledging a lost issue. See [setup and acceptance](AGENTMAIL-SETUP.md).

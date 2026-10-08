@@ -90,3 +90,7 @@ P2, L overall; connected mailboxes add a separate L integration. Prioritize afte
 - [ ] Malicious/oversized HTML, attachment payloads, tracking images, and links cannot execute or trigger unbounded fetches.
 - [ ] Disconnect/revoke works; email account state remains unchanged; secrets and raw mail stay outside shared sync.
 - [ ] Mailbox checkpoints recover missed changes and bounded backfill respects the selected source/date range.
+
+## Selected receiving provider
+
+AgentMail selected on 2026-10-07. The receive-only adapter uses signed webhooks scoped to one configured inbox and recovers omitted bodies/headers using the provider API. Playlist assignment remains in Yomu. Postmark is retained as an alternative. See [AgentMail setup](AGENTMAIL-SETUP.md); live connection and actual forwarded newsletter acceptance remain pending.

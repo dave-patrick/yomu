@@ -1,4 +1,4 @@
-"""Private newsletter ingestion. No network fetches or mailbox mutations."""
+"""Private newsletter ingestion. Provider adapters never mutate mailboxes."""
 import base64
 import hashlib
 import hmac
@@ -15,6 +15,7 @@ from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
+import agentmail_receiver
 
 MAX_EMAIL = 2 * 1024 * 1024
 
@@ -256,7 +257,8 @@ class NewsletterService:
             playlists = [json.loads(row[0]) for row in db.execute("SELECT payload FROM records WHERE kind='playlists' AND deleted=0")]
             return dict(rules=rules, deliveries=deliveries, playlists=playlists,
                         receivingAddress=os.environ.get('YOMU_NEWSLETTER_ADDRESS', ''),
-                        receivingEnabled=len(os.environ.get('YOMU_NEWSLETTER_WEBHOOK_SECRET', '')) >= 32)
+                        receivingEnabled=agentmail_receiver.configured() or len(os.environ.get('YOMU_NEWSLETTER_WEBHOOK_SECRET', '')) >= 32,
+                        receivingProvider='AgentMail' if agentmail_receiver.configured() else 'Postmark' if len(os.environ.get('YOMU_NEWSLETTER_WEBHOOK_SECRET', '')) >= 32 else None)
 
 
 def create_router(service):
@@ -342,6 +344,10 @@ def create_router(service):
             if not result.rowcount:
                 raise HTTPException(409, 'Already imported. Remove that issue from the library instead.')
         return dict(status='ignored')
+
+    @router.post('/hooks/newsletters/agentmail')
+    async def receive_agentmail(request: Request):
+        return await agentmail_receiver.receive(service, await bounded_body(request), request.headers)
 
     @router.post('/hooks/newsletters/postmark')
     async def receive(request: Request):

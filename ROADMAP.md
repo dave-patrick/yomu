@@ -429,3 +429,7 @@ real Chrome validation passes.
   retention policy, and public distribution before their respective implementations.
 - No dates or new recurring costs are committed. Refine effort after each wave and
   reprioritize when actual usage or reliability findings justify it.
+
+### Newsletter provider decision — 2026-10-07
+
+AgentMail selected for the initial free receiving inbox. Signed receiver, omitted-body recovery, single-inbox scope, and existing playlist routing implemented. Next acceptance gate: configure private provider credentials/webhook, receive a real forwarded newsletter, confirm its source and playlist rule, then verify the next issue imports automatically and syncs to Android. See [AgentMail setup](docs/AGENTMAIL-SETUP.md). Mailbox OAuth capture and historical backfill remain later work.
