@@ -13,6 +13,9 @@ object PlaybackEvents {
         val isPlaying: Boolean,
         val sentenceIndex: Int,
         val sentenceCount: Int,
+        val phase: String = if (isPlaying) "Playing" else "Paused",
+        val sleepUntil: Long = 0,
+        val stopAtEnd: Boolean = false,
     )
 
     private val mutableMessages = MutableSharedFlow<String>(extraBufferCapacity = 8)

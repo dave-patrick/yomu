@@ -33,6 +33,8 @@ import dev.yomu.app.backup.LibraryBackupManager
 import dev.yomu.app.backup.OpmlManager
 import dev.yomu.app.data.ReadingProgressEntity
 import kotlinx.coroutines.Dispatchers
+import androidx.room.withTransaction
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -187,7 +189,16 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         UrlImportWork.enqueue(getApplication(), itemId)
         itemId
     }
-    fun retryImport(itemId: String) = work("Retrying import…") { UrlImportWork.enqueue(getApplication(), itemId) }
+    fun retryImport(itemId: String) = work("Retrying import…") {
+        val item = repository.dao.getItem(itemId) ?: return@work null
+        if (item.sourceType == "url") UrlImportWork.enqueue(getApplication(), itemId)
+        else dev.yomu.app.data.DocumentImportWork.enqueue(getApplication(), itemId)
+    }
+    fun cancelImport(itemId: String) {
+        androidx.work.WorkManager.getInstance(app).cancelUniqueWork("yomu-url-import:$itemId")
+        androidx.work.WorkManager.getInstance(app).cancelUniqueWork("yomu-document-import:$itemId")
+        work("Cancelling import…") { repository.dao.setImportState(itemId, "failed", "Import cancelled. Tap Retry to continue from the saved original.") }
+    }
     fun retryPdfPassword(itemId: String, password: String) = work("Unlocking PDF…") {
         importer.retryPdfPassword(itemId, password)
     }
@@ -237,19 +248,26 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun deleteReadingItem(itemId: String) = work("Deleting saved reading…") {
         repository.dao.getItem(itemId)?.let { item ->
             repository.deleteItem(itemId)
-            repository.discardOriginal(item)
+            cancelImport(itemId)
+            if (reading.value?.id == itemId) closeReader()
+            if (playback.value?.itemId == itemId) playbackControl(YomuPlaybackService.ACTION_STOP)
         }
     }
     fun archiveReadingItem(itemId: String) = work("Moving to Archive…") { repository.archiveItem(itemId) }
     fun restoreArchivedItem(itemId: String) = work("Restoring to To read…") { repository.restoreArchivedItem(itemId) }
     fun markItemRead(itemId: String) = work("Marking as read…") { repository.markItemRead(itemId) }
     fun markItemUnread(itemId: String) = work("Marking as unread…") { repository.markItemUnread(itemId) }
-    fun startNow(itemId: String) {
+    private val _quietReading = MutableStateFlow(false)
+    val quietReading = _quietReading.asStateFlow()
+    fun readQuietly(itemId: String) { _quietReading.value = true; openReader(itemId) }
+    fun startNow(itemId: String) = startNowAt(itemId, null)
+    fun startNowAt(itemId: String, startAt: Int?) {
+        _quietReading.value = false
         val generation = ++readerGeneration
         work("Starting playback…") {
             val item = repository.dao.getItem(itemId) ?: error("This reading item is no longer available.")
             if (generation == readerGeneration) readerSelection.open(item.id)
-            val resumeSentence = repository.dao.getProgress(itemId)?.sentenceIndex ?: 0
+            val resumeSentence = startAt ?: repository.dao.getProgress(itemId)?.sentenceIndex ?: 0
             val intent = Intent(getApplication<Application>(), YomuPlaybackService::class.java)
                 .setAction(YomuPlaybackService.ACTION_PLAY_ITEM)
                 .putExtra(YomuPlaybackService.EXTRA_ITEM_ID, itemId)
@@ -371,6 +389,101 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private fun playbackControl(action: String, configure: Intent.() -> Unit = {}) {
         val intent = Intent(getApplication<Application>(), YomuPlaybackService::class.java).setAction(action).apply(configure)
         getApplication<Application>().startService(intent)
+    }
+    val allItems = repository.dao.observeAllItems().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val memberships = repository.dao.observeAllMemberships().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    fun renamePlaylist(id: String, name: String) = work("Renaming playlist…") { repository.renamePlaylist(id, name) }
+    fun deletePlaylist(id: String) = work("Deleting playlist…") { repository.deletePlaylist(id) }
+    fun movePlaylistItem(id: String, item: String, direction: Int) = work("Reordering playlist…") { repository.movePlaylistItem(id, item, direction) }
+    val deletedItems = repository.dao.observeDeleted().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    fun restoreDeleted(id: String) = work("Restoring deleted item…") { repository.restoreDeleted(id) }
+    fun permanentlyDelete(id: String) = work("Permanently deleting item…") { repository.permanentlyDelete(id) }
+    fun annotationsFor(id: String) = repository.dao.observeAnnotations(id)
+    fun saveAnnotation(item: ReadingItemEntity, offset: Int, kind: String, note: String) = work("Saving $kind…") {
+        require(repository.dao.getItem(item.id)?.normalizedText == item.normalizedText) { "Text changed. Reopen the article before bookmarking." }
+        repository.dao.saveAnnotation(dev.yomu.app.data.AnnotationEntity(java.util.UUID.randomUUID().toString(), item.id,
+            dev.yomu.app.data.ReadingAnchor.create(item.normalizedText, offset), kind, note.take(10_000), System.currentTimeMillis()))
+    }
+    fun deleteAnnotation(id: String) = work("Removing bookmark…") { repository.dao.deleteAnnotation(id) }
+    fun setTags(id: String, text: String) = work("Saving tags…") {
+        val tags = text.split(',').map { it.trim().lowercase().take(60) }.filter { it.isNotBlank() }.distinct().take(30).joinToString(", ")
+        repository.dao.setTags(id, tags, System.currentTimeMillis())
+    }
+    fun bulkAction(ids: Set<String>, action: String, playlistId: String? = null) = work("Updating ${ids.size} items…") {
+        app.database.withTransaction {
+            ids.forEach { id -> when(action) {
+                "Queue" -> repository.addToUpNext(id)
+                "Archive" -> repository.archiveItem(id)
+                "Read" -> repository.markItemRead(id)
+                "Delete" -> repository.deleteItem(id)
+                "Playlist" -> playlistId?.let { repository.addToPlaylist(it, id) }
+            } }
+        }
+    }
+    fun downloadOriginal(itemId: String) = work("Downloading original…") {
+        withContext(Dispatchers.IO) {
+            val item = repository.dao.getItem(itemId) ?: error("This item was removed.")
+            if (item.originalFilePath?.let { File(it).isFile } == true) return@withContext
+            val fileId = app.getSharedPreferences("sync_state", 0).getString("file:$itemId", null)
+                ?: error("Sync this item before downloading its original.")
+            java.util.UUID.fromString(fileId)
+            val vault = dev.yomu.app.sync.SyncVault(app)
+            val token = vault.token() ?: error("Connect your web library first.")
+            val root = File(app.filesDir, "downloaded-originals").apply { mkdirs() }
+            val target = File(root, "${java.util.UUID.randomUUID()}.original")
+            var attached = false
+            try {
+                val request = okhttp3.Request.Builder().url(vault.server() + "/api/files/$fileId")
+                    .header("Authorization", "Bearer $token").build()
+                okhttp3.OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).build()
+                    .newCall(request).execute().use { response ->
+                        check(response.isSuccessful) { "Original download failed (${response.code}). Try again after syncing." }
+                        val body = response.body ?: error("The original download was empty.")
+                        body.byteStream().use { input -> target.outputStream().use { output ->
+                            val buffer = ByteArray(8192)
+                            var total = 0L
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                total += count
+                                check(total <= 20L * 1024 * 1024) { "Original exceeds the 20 MB download limit." }
+                                output.write(buffer, 0, count)
+                            }
+                        } }
+                    }
+                app.database.withTransaction {
+                    val current = repository.dao.getItem(itemId) ?: error("This item was removed during download.")
+                    if (current.originalFilePath?.let { File(it).isFile } != true) {
+                        repository.dao.upsertItem(current.copy(originalFilePath = target.absolutePath))
+                        attached = true
+                    }
+                }
+            } finally { if (!attached) target.delete() }
+        }
+    }
+    fun cleanSpeechCache(onComplete: () -> Unit) = work("Clearing inactive speech cache…") {
+        check(PlaybackEvents.snapshot.value == null) { "Stop playback before clearing speech cache." }
+        withContext(Dispatchers.IO) {
+            val root = File(app.cacheDir, "speech").canonicalFile
+            val cutoff = System.currentTimeMillis() - 24L * 60 * 60 * 1000
+            root.walkTopDown().filter { it.isFile && it.lastModified() < cutoff }.forEach { file ->
+                check(PlaybackEvents.snapshot.value == null) { "Playback started; cache cleanup stopped." }
+                if (file.canonicalPath.startsWith(root.path + File.separator)) file.delete()
+            }
+        }
+        onComplete()
+    }
+    fun exportOriginal(item: ReadingItemEntity, destination: Uri) = work("Saving original…") {
+        val file = item.originalFilePath?.let { java.io.File(it) }?.takeIf { it.isFile } ?: error("Download the original first.")
+        withContext(Dispatchers.IO) { file.inputStream().use { source -> app.contentResolver.openOutputStream(destination)?.use { source.copyTo(it) } ?: error("Could not save the original.") } }
+    }
+    fun exportNotes(item: ReadingItemEntity, destination: Uri) = work("Exporting notes…") {
+        val rows = annotationsFor(item.id).first()
+        withContext(Dispatchers.IO) { app.contentResolver.openOutputStream(destination)?.bufferedWriter()?.use { writer ->
+            writer.appendLine("# ${item.title}")
+            item.sourceUrl?.let { writer.appendLine(it) }
+            rows.forEach { row -> writer.appendLine("\n## ${row.kind}"); writer.appendLine(JSONObject(row.anchor).optString("quote")); writer.appendLine(row.note) }
+        } ?: error("Could not write notes.") }
     }
     fun createPlaylist(name: String) = work("Creating playlist…") { repository.createPlaylist(name) }
     fun openPlaylist(id: String) { selectedPlaylistId.value = id }

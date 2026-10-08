@@ -10,6 +10,26 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class LibraryDatabaseMigrationTest {
+    @Test fun migrationSixPreservesTextListeningAndReadingCursor() {
+        val name = "yomu-alpha19-migration.db"
+        helper.createDatabase(name, 5).apply {
+            execSQL("INSERT INTO reading_items (id,title,sourceType,normalizedText,importState,inToRead,importedAt,updatedAt,estimatedSecondsAtOneX,contentVersion,manualOrder,archived) VALUES ('saved','Keep me','txt','Original text', 'ready',1,123,123,60,1,123,0)")
+            execSQL("INSERT INTO reading_progress (itemId,sentenceIndex,characterOffset,playbackSpeed,completed,lastListenedAt) VALUES ('saved',2,12,1.0,0,123)")
+            execSQL("INSERT INTO reading_cursors VALUES ('saved','{}',123,'Phone')")
+            close()
+        }
+        helper.runMigrationsAndValidate(name, 6, true, LibraryDatabase.MIGRATION_5_6).use { db ->
+            db.query("SELECT normalizedText,tags FROM reading_items WHERE id='saved'").use { cursor ->
+                assertEquals(true,cursor.moveToFirst()); assertEquals("Original text",cursor.getString(0)); assertEquals("",cursor.getString(1))
+            }
+            db.query("SELECT sentenceIndex,characterOffset FROM reading_progress WHERE itemId='saved'").use { cursor ->
+                assertEquals(true,cursor.moveToFirst()); assertEquals(2,cursor.getInt(0)); assertEquals(12,cursor.getInt(1))
+            }
+            db.query("SELECT anchor FROM reading_cursors WHERE itemId='saved'").use { cursor ->
+                assertEquals(true,cursor.moveToFirst()); assertEquals("{}",cursor.getString(0))
+            }
+        }
+    }
     @Test fun readingCursorMigrationPreservesListeningAndLibrary() {
         val name = "yomu-reading-cursor-migration.db"
         helper.createDatabase(name, 4).apply {

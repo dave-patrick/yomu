@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import com.googlecode.tesseract.android.TessBaseAPI
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import net.dankito.readability4j.Readability4J
 import org.apache.poi.hwpf.extractor.WordExtractor
@@ -52,7 +53,7 @@ class ContentImporter(context: Context, private val dao: LibraryDao) {
     suspend fun retryUrl(itemId: String) = withContext(Dispatchers.IO) {
         val saved = dao.getItem(itemId) ?: error("This reading item is no longer available.")
         val url = saved.sourceUrl ?: error("Share this document to Yomu again to retry its import.")
-        dao.upsertItem(saved.copy(importState = "fetching", warning = null))
+        dao.setImportState(itemId, "fetching", null)
         try {
             val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).get().build()
             client.newCall(request).execute().use { response ->
@@ -67,17 +68,16 @@ class ContentImporter(context: Context, private val dao: LibraryDao) {
                 val finalUrl = response.request.url.toString()
                 val (title, text) = extractArticle(finalUrl, html)
                 require(text.length >= 80) { "Could not find enough readable article text on this page." }
-                dao.upsertItem(saved.copy(title = title, sourceUrl = finalUrl, sourceName = host(finalUrl),
-                    normalizedText = text, importState = "ready", warning = null,
-                    estimatedSecondsAtOneX = estimateSeconds(text), updatedAt = System.currentTimeMillis()))
+                dao.finishExtraction(itemId, text, estimateSeconds(text), System.currentTimeMillis())
+                dao.setExtractedTitle(itemId, title, saved.title)
+                dao.setArticleSource(itemId, finalUrl, host(finalUrl).orEmpty())
             }
         } catch (error: Exception) {
             val retryable = error is IOException || (error is RetryableUrlImportException)
             val message = error.message ?: "Page import failed"
-            dao.getItem(itemId)?.let { dao.upsertItem(it.copy(
-                importState = if (retryable) "pending" else "failed",
-                warning = if (retryable) "Waiting for an internet connection; Yomu will retry automatically." else message,
-            )) }
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            dao.setImportState(itemId, if (retryable) "pending" else "failed",
+                if (retryable) "Waiting for an internet connection; Yomu will retry automatically." else message)
             if (retryable) throw RetryableUrlImportException(message, error)
             throw error
         }
@@ -93,37 +93,64 @@ class ContentImporter(context: Context, private val dao: LibraryDao) {
         dao.upsertItem(ReadingItemEntity(id, safeName, fileKind(safeName, mimeType), sourceName = safeName,
             originalFilePath = stored.absolutePath, importState = "extracting", importedAt = now, manualOrder = dao.nextManualOrder()))
         try {
-            input().use { source -> stored.outputStream().buffered().use { sink -> source.copyTo(sink) } }
+            input().use { source ->
+                val staging = File(stored.absolutePath + ".partial")
+                try {
+                    staging.outputStream().buffered().use { sink ->
+                        val buffer = ByteArray(64 * 1024); var total = 0L
+                        while (true) { val count = source.read(buffer); if (count < 0) break
+                            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                            total += count; require(total <= 80L * 1024 * 1024) { "Documents must be 80 MB or smaller." }; sink.write(buffer, 0, count)
+                        }
+                    }
+                    check(staging.renameTo(stored)) { "Could not save the document." }
+                } finally { staging.delete() }
+            }
+            DocumentImportWork.enqueue(app, id)
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            dao.setImportState(id, "failed", error.message ?: "Document import failed")
+        }
+        id
+    }
+
+    suspend fun extractSavedDocument(id: String, password: String? = null) = withContext(Dispatchers.IO) {
+        val saved = dao.getItem(id) ?: return@withContext
+        val stored = saved.originalFilePath?.let(::File)?.takeIf { it.isFile }
+            ?: error("The original is unavailable. Download it or share it again.")
+        val safeName = saved.sourceName ?: saved.title
+        dao.setImportState(id, "extracting", null)
+        try {
+            val mimeType: String? = null
             val text = when {
-                safeName.endsWith(".pdf", ignoreCase = true) || mimeType == "application/pdf" -> extractPdf(stored, null)
+                safeName.endsWith(".pdf", ignoreCase = true) || mimeType == "application/pdf" -> extractPdf(stored, password)
                 safeName.endsWith(".docx", ignoreCase = true) || mimeType == DOCX -> extractDocx(stored, readFootnotes)
                 safeName.endsWith(".doc", ignoreCase = true) || mimeType == DOC -> extractLegacyDoc(stored, readFootnotes)
                 safeName.endsWith(".txt", ignoreCase = true) || mimeType?.startsWith("text/") == true -> stored.readText()
                 else -> error("This file type is not supported yet.")
             }.trim()
             require(text.isNotBlank()) { "No readable text was found in this document." }
-            dao.upsertItem(dao.getItem(id)!!.copy(normalizedText = clean(text), importState = "ready",
-                estimatedSecondsAtOneX = estimateSeconds(clean(text))))
+            dao.finishExtraction(id, clean(text), estimateSeconds(clean(text)), System.currentTimeMillis())
         } catch (error: Exception) {
-            val needsPassword = error is SecurityException && (safeName.endsWith(".pdf", true) || mimeType == "application/pdf")
-            dao.getItem(id)?.let { dao.upsertItem(it.copy(originalFilePath = stored.absolutePath, importState = "failed", warning = if (needsPassword) "This PDF is password protected or uses an unsupported security setting. Tap to try its password." else error.message ?: "Document import failed")) }
+            val needsPassword = error is SecurityException && saved.sourceType == "pdf"
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            dao.setImportState(id, "failed", if (needsPassword) "This PDF is password protected or uses an unsupported security setting. Tap to try its password." else error.message ?: "Document import failed")
+            throw error
         }
-        id
     }
 
     suspend fun retryPdfPassword(itemId: String, password: String) = withContext(Dispatchers.IO) {
         val saved = dao.getItem(itemId) ?: error("This reading item is no longer available.")
         require(saved.sourceType == "pdf") { "This item is not a PDF." }
         val file = saved.originalFilePath?.let(::File)?.takeIf { it.isFile } ?: error("The saved PDF is unavailable. Share it to Yomu again.")
-        dao.upsertItem(saved.copy(importState = "extracting", warning = null))
+        dao.setImportState(itemId, "extracting", null)
         try {
             val text = clean(extractPdf(file, password))
             require(text.isNotBlank()) { "No readable text was found in this PDF." }
-            dao.upsertItem(saved.copy(normalizedText = text, importState = "ready", warning = null,
-                estimatedSecondsAtOneX = estimateSeconds(text), updatedAt = System.currentTimeMillis()))
+            dao.finishExtraction(itemId, text, estimateSeconds(text), System.currentTimeMillis())
         } catch (error: Exception) {
             val hint = if (error is SecurityException) "The PDF password was incorrect, or its security method is unsupported. Try again or unlock it in a PDF reader first." else error.message ?: "Could not read this PDF."
-            dao.upsertItem(saved.copy(importState = "failed", warning = hint))
+            dao.setImportState(itemId, "failed", hint)
             throw IllegalArgumentException(hint)
         }
     }

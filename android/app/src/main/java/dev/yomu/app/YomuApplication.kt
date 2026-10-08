@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 class YomuApplication : Application() {
     val database by lazy { LibraryDatabase.get(this) }
@@ -26,6 +27,8 @@ class YomuApplication : Application() {
         }
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             database.libraryDao().getPendingUrlImportIds().forEach { UrlImportWork.enqueue(this@YomuApplication, it) }
+            database.libraryDao().observeAllItems().first().filter { it.sourceType != "url" && it.importState in setOf("pending", "extracting") && it.originalFilePath?.let { path -> java.io.File(path).isFile } == true }
+                .forEach { dev.yomu.app.data.DocumentImportWork.enqueue(this@YomuApplication, it.id) }
         }
     }
 }

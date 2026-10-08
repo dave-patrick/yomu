@@ -34,6 +34,8 @@ data class ReadingItemEntity(
     val contentVersion: Int = 1,
     @ColumnInfo(defaultValue = "0") val manualOrder: Long = importedAt,
     @ColumnInfo(defaultValue = "0") val archived: Boolean = false,
+    @ColumnInfo(defaultValue = "''") val tags: String = "",
+
 )
 
 @Entity(tableName = "playlists", indices = [Index("name", unique = true)])
@@ -121,6 +123,13 @@ data class ReadingListRow(
     val manualOrder: Long,
 )
 
+@Entity(tableName = "annotations", indices = [Index("itemId")])
+data class AnnotationEntity(@PrimaryKey val id: String, val itemId: String, val anchor: String,
+    val kind: String, val note: String, val createdAt: Long)
+
+@Entity(tableName = "deleted_items")
+data class DeletedItemEntity(@PrimaryKey val id: String, val payload: String, val deletedAt: Long)
+
 @Dao
 interface LibraryDao {
     @Query("SELECT * FROM reading_items WHERE inToRead = 1 ORDER BY importedAt DESC")
@@ -146,6 +155,31 @@ interface LibraryDao {
 
     @Upsert
     suspend fun upsertItem(item: ReadingItemEntity)
+
+    @Query("UPDATE reading_items SET importState=:state, warning=:warning WHERE id=:id")
+    suspend fun setImportState(id: String, state: String, warning: String?)
+
+    @Query("UPDATE reading_items SET normalizedText=:text, importState='ready', warning=NULL, estimatedSecondsAtOneX=:seconds, contentVersion=contentVersion+1, updatedAt=:now WHERE id=:id")
+    suspend fun finishExtraction(id: String, text: String, seconds: Int, now: Long): Int
+
+    @Query("UPDATE reading_items SET title=:title WHERE id=:id AND title=:previous")
+    suspend fun setExtractedTitle(id: String, title: String, previous: String)
+
+    @Query("UPDATE reading_items SET sourceUrl=:url, sourceName=:host WHERE id=:id")
+    suspend fun setArticleSource(id: String, url: String, host: String)
+
+    @Query("SELECT * FROM playlist_memberships")
+    fun observeAllMemberships(): Flow<List<PlaylistMembershipEntity>>
+
+    @Query("SELECT * FROM playlist_memberships WHERE playlistId=:id ORDER BY sortOrder")
+    suspend fun getMemberships(id: String): List<PlaylistMembershipEntity>
+
+    @Query("DELETE FROM playlist_memberships WHERE playlistId=:id")
+    suspend fun clearPlaylistMemberships(id: String)
+
+    @Query("DELETE FROM reading_progress WHERE itemId=:id")
+    suspend fun deleteProgress(id: String)
+
 
     @Query("DELETE FROM reading_items WHERE id = :itemId")
     suspend fun deleteItem(itemId: String)
@@ -272,6 +306,19 @@ interface LibraryDao {
 
     @Query("SELECT COALESCE(MAX(manualOrder), 0) + 1024 FROM reading_items")
     suspend fun nextManualOrder(): Long
+
+    @Query("SELECT * FROM annotations WHERE itemId=:id ORDER BY createdAt DESC")
+    fun observeAnnotations(id: String): Flow<List<AnnotationEntity>>
+    @Upsert suspend fun saveAnnotation(row: AnnotationEntity)
+    @Query("DELETE FROM annotations WHERE id=:id") suspend fun deleteAnnotation(id: String)
+    @Query("DELETE FROM annotations WHERE itemId=:id") suspend fun deleteItemAnnotations(id: String)
+    @Query("SELECT * FROM deleted_items ORDER BY deletedAt DESC") fun observeDeleted(): Flow<List<DeletedItemEntity>>
+    @Query("SELECT * FROM deleted_items WHERE id=:id") suspend fun getDeleted(id: String): DeletedItemEntity?
+    @Upsert suspend fun saveDeleted(row: DeletedItemEntity)
+    @Query("DELETE FROM deleted_items WHERE id=:id") suspend fun removeDeleted(id: String)
+    @Query("UPDATE reading_items SET tags=:tags, updatedAt=:now WHERE id=:id")
+    suspend fun setTags(id: String, tags: String, now: Long)
+
 }
 
 @Entity(tableName = "sync_baselines")
@@ -288,8 +335,10 @@ data class SyncBaselineEntity(@PrimaryKey val key: String, val payload: String)
         ReaderDefaultsEntity::class,
         ReadHistoryEntity::class,
         SyncBaselineEntity::class,
+        AnnotationEntity::class,
+        DeletedItemEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -324,12 +373,21 @@ abstract class LibraryDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE reading_items ADD COLUMN tags TEXT NOT NULL DEFAULT ''")
+                db.execSQL("CREATE TABLE IF NOT EXISTS annotations (id TEXT NOT NULL PRIMARY KEY, itemId TEXT NOT NULL, anchor TEXT NOT NULL, kind TEXT NOT NULL, note TEXT NOT NULL, createdAt INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_annotations_itemId ON annotations (itemId)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS deleted_items (id TEXT NOT NULL PRIMARY KEY, payload TEXT NOT NULL, deletedAt INTEGER NOT NULL)")
+            }
+        }
+
         fun get(context: Context): LibraryDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 LibraryDatabase::class.java,
                 DATABASE_NAME,
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build().also { instance = it }
         }
 
         const val DATABASE_NAME = "yomu-library.db"

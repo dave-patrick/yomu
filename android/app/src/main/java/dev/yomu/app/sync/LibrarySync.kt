@@ -27,10 +27,10 @@ class LibrarySync(private val context: Context) {
     private val prefs = context.getSharedPreferences("sync_state", Context.MODE_PRIVATE)
     private val vault = SyncVault(context)
     private val client = OkHttpClient.Builder().callTimeout(90, TimeUnit.SECONDS).followRedirects(false).build()
-    private val kinds = listOf("reading_items", "playlists", "playlist_memberships", "up_next", "reading_progress", "read_history", "reading_cursors", "reader_defaults")
+    private val kinds = listOf("reading_items", "playlists", "playlist_memberships", "up_next", "reading_progress", "read_history", "reading_cursors", "reader_defaults", "annotations")
     private fun id(kind: String, row: JSONObject) = when(kind) {
         "playlist_memberships" -> "${row.getString("playlistId")}:${row.getString("itemId")}"
-        "reading_items", "playlists", "read_history", "reader_defaults" -> row.getString("id")
+        "reading_items", "playlists", "read_history", "reader_defaults", "annotations" -> row.getString("id")
         else -> row.getString("itemId")
     }
     private fun equal(a: Any?, b: Any?): Boolean = canonical(a) == canonical(b)
@@ -42,12 +42,12 @@ class LibrarySync(private val context: Context) {
     private fun snapshot(): Map<String, JSONObject> {
         val result = linkedMapOf<String, JSONObject>()
         val db = database.openHelper.writableDatabase
-        for(kind in kinds) db.query("SELECT * FROM $kind").use { cursor ->
+        for(kind in kinds.filter { it != "annotations" || prefs.getBoolean("mobile_v2", false) }) db.query("SELECT * FROM $kind").use { cursor ->
             while(cursor.moveToNext()) {
                 val row = JSONObject()
                 for(index in 0 until cursor.columnCount) {
                     val name = cursor.getColumnName(index)
-                    if(name == "originalFilePath") continue
+                    if(name == "originalFilePath" || (name == "tags" && !prefs.getBoolean("mobile_v2", false))) continue
                     val value: Any = when {
                         cursor.isNull(index) -> JSONObject.NULL
                         name in setOf("inToRead", "archived", "completed") -> cursor.getInt(index) != 0
@@ -108,6 +108,8 @@ class LibrarySync(private val context: Context) {
         val status = SyncStatusStore.get(context)
         status.started()
         try {
+        val capabilities = request("state").optJSONArray("capabilities")
+        prefs.edit().putBoolean("mobile_v2", capabilities != null && (0 until capabilities.length()).any { capabilities.optString(it) == "mobile_v2" }).commit()
         val direction = SyncOptions(context).direction()
         val db = database.openHelper.writableDatabase
         // Upload originals once, before advertising the fileId to another device.
@@ -118,13 +120,19 @@ class LibrarySync(private val context: Context) {
         for((itemId,path) in uploads) if(direction.uploads && !prefs.contains("file:$itemId")) {
             val file = File(path)
             if(!file.isFile) continue
-            require(file.length() <= 20L*1024*1024) { "${file.name} exceeds the 20 MB sync limit." }
+            if(file.length() > 20L*1024*1024) {
+                prefs.edit().putString("file_error:$itemId", "Original exceeds the 20 MB sync limit; text and metadata still sync.").commit()
+                continue
+            }
             val fileId = runCatching { UUID.fromString(itemId).toString() }.getOrElse { UUID.randomUUID().toString() }
             val req = Request.Builder().url(vault.server()+"/api/files/$fileId").header("Authorization", "Bearer ${vault.token()}")
                 .header("X-File-Name", java.net.URLEncoder.encode(file.name, "UTF-8").replace("+", "%20"))
                 .put(file.asRequestBody("application/octet-stream".toMediaType())).build()
-            client.newCall(req).execute().use { if (!it.isSuccessful) throw SyncHttpException(it.code, "Could not sync ${file.name}: HTTP ${it.code}.") }
-            check(prefs.edit().putString("file:$itemId",fileId).commit())
+            try {
+                client.newCall(req).execute().use { if (!it.isSuccessful) throw SyncHttpException(it.code, "Original upload: HTTP ${it.code}.") }
+                check(prefs.edit().putString("file:$itemId",fileId).remove("file_error:$itemId").commit())
+            } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+            catch (error: Exception) { prefs.edit().putString("file_error:$itemId", error.message ?: "Original upload failed; retry sync.").commit() }
         }
         lateinit var sent: Map<String,JSONObject>
         lateinit var base: Map<String,JSONObject>
@@ -164,7 +172,7 @@ class LibrarySync(private val context: Context) {
                 val remote = record.optJSONObject("data")
                 val now = current[key]
                 val before = sent[key]
-                if (kind in setOf("reading_cursors", "reader_defaults") && now != null) {
+                if (kind in setOf("reading_cursors", "reader_defaults", "annotations") && now != null) {
                     val conflicts = response.optJSONArray("conflicts") ?: JSONArray()
                     if ((0 until conflicts.length()).any { conflicts.optString(it).startsWith("$key/") || conflicts.optString(it).startsWith("$key:") }) {
                         prefs.edit().putString("resume_conflict:$key", now.toString()).commit()
@@ -228,12 +236,12 @@ class LibrarySync(private val context: Context) {
     private fun delete(kind: String,ident: String) {
         val (where,args) = identity(kind,ident)
         database.openHelper.writableDatabase.execSQL("DELETE FROM $kind WHERE $where",args)
-        if(kind == "reading_items") for(table in listOf("up_next","playlist_memberships","read_history","reading_progress","reading_cursors"))
+        if(kind == "reading_items") for(table in listOf("up_next","playlist_memberships","read_history","reading_progress","reading_cursors","annotations"))
             database.openHelper.writableDatabase.execSQL("DELETE FROM $table WHERE itemId=?",arrayOf(ident))
     }
     private fun identity(kind: String,ident: String): Pair<String,Array<Any?>> = when(kind) {
         "playlist_memberships" -> "playlistId=? AND itemId=?" to arrayOf(ident.substringBefore(':'),ident.substringAfter(':'))
-        "reading_items", "playlists", "read_history", "reader_defaults" -> "id=?" to arrayOf(ident)
+        "reading_items", "playlists", "read_history", "reader_defaults", "annotations" -> "id=?" to arrayOf(ident)
         else -> "itemId=?" to arrayOf(ident)
     }
     private fun upsert(kind: String,ident: String,row: JSONObject) {

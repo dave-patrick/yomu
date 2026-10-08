@@ -22,13 +22,14 @@ if len(TOKEN) < 32:
     raise RuntimeError('Set YOMU_ACCESS_TOKEN to a random secret of at least 32 characters.')
 MAX_FILE = 20 * 1024 * 1024
 TABLES = {
-    'reading_items': {'id', 'title', 'sourceType', 'sourceUrl', 'sourceName', 'normalizedText', 'importState', 'warning', 'inToRead', 'importedAt', 'updatedAt', 'estimatedSecondsAtOneX', 'contentVersion', 'manualOrder', 'archived', 'fileId'},
+    'reading_items': {'id', 'title', 'sourceType', 'sourceUrl', 'sourceName', 'normalizedText', 'importState', 'warning', 'inToRead', 'importedAt', 'updatedAt', 'estimatedSecondsAtOneX', 'contentVersion', 'manualOrder', 'archived', 'fileId', 'tags'},
     'playlists': {'id', 'name', 'createdAt', 'sortOrder'},
     'playlist_memberships': {'playlistId', 'itemId', 'sortOrder', 'addedAt'},
     'up_next': {'itemId', 'position', 'addedAt'},
     'reading_progress': {'itemId', 'sentenceIndex', 'characterOffset', 'playbackSpeed', 'completed', 'lastListenedAt'},
     'read_history': {'id', 'itemId', 'completedAt'},
     'reading_cursors': {'itemId', 'anchor', 'updatedAt', 'deviceLabel'},
+    'annotations': {'id', 'itemId', 'anchor', 'kind', 'note', 'createdAt'},
     'reader_defaults': {'id', 'font', 'size', 'spacing', 'schemaVersion'},
 }
 LOCK = threading.RLock()
@@ -94,9 +95,13 @@ def validate(kind, ident, data):
             raise HTTPException(400, 'Unsupported library fields.')
         if len(json.dumps(data)) > 4 * 1024 * 1024:
             raise HTTPException(413, 'Reading item is too large.')
-        expected = f"{data.get('playlistId')}:{data.get('itemId')}" if kind == 'playlist_memberships' else str(data.get('id') if kind in ('reading_items','playlists','read_history','reader_defaults') else data.get('itemId'))
+        expected = f"{data.get('playlistId')}:{data.get('itemId')}" if kind == 'playlist_memberships' else str(data.get('id') if kind in ('reading_items','playlists','read_history','reader_defaults','annotations') else data.get('itemId'))
         if expected != ident:
             raise HTTPException(400, 'Record identity does not match its content.')
+        if kind == 'annotations' and (data.get('kind') not in ('bookmark','highlight','note','listening bookmark') or not isinstance(data.get('note'), str) or len(data['note']) > 10000 or not isinstance(data.get('anchor'), str) or len(data['anchor']) > 4096):
+            raise HTTPException(400, 'Invalid annotation.')
+        if kind == 'reading_items' and 'tags' in data and (not isinstance(data['tags'], str) or len(data['tags']) > 2000):
+            raise HTTPException(400, 'Invalid tags.')
         if kind == 'reading_cursors':
             try:
                 anchor = json.loads(data['anchor'])
@@ -121,6 +126,7 @@ def health():
 def get_state():
     with LOCK, connect() as db:
         result = state(db)
+        result['capabilities'] = ['mobile_v2']
         result['clients'] = [dict(r) for r in db.execute('SELECT * FROM clients ORDER BY seen DESC')]
         return result
 

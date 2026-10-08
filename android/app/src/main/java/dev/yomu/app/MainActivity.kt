@@ -12,6 +12,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.Checkbox
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
@@ -663,6 +665,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                     swipeLeftAction, { value -> swipeLeftAction = value; libraryPrefs.edit().putString("swipe_left_action", value).apply() },
                     playbackSpeed, vm::setPlaybackSpeed,
                     diagnosticEvents, vm::clearDiagnosticEvents,
+                    mobileTools = { MobileHealthTools(vm) },
                     onOpenAbout = { showSettings = false; showAbout = true },
                     modifier = Modifier.padding(padding))
                 selectedPlaylist != null -> PlaylistDetail(selectedPlaylist!!, playlistItems, vm, enqueueAndResetQueue, listSpacingDp, modifier = Modifier.padding(padding))
@@ -680,7 +683,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                     }, onRemoveQueue = {}, onSelectPlaylist = { playlistItemPending = it }, modifier = Modifier.padding(padding),
                         sortMode = toReadSortMode,
                         onSortModeChange = { mode, _ -> toReadSortMode = mode; libraryPrefs.edit().putString("to_read_sort", mode).apply() },
-                        showSortPicker = true, allowReorder = toReadSortMode == "Manual",
+                        vm = vm, showSortPicker = true, allowReorder = toReadSortMode == "Manual",
                         onMoveItemUp = { vm.moveToReadItem(it.id, -1) }, onMoveItemDown = { vm.moveToReadItem(it.id, 1) },
                         showDurations = false, swipeRightAction = swipeRightAction, swipeLeftAction = swipeLeftAction, itemSpacingDp = listSpacingDp,
                         archiveActionEnabled = true, readStateActionEnabled = true,
@@ -690,12 +693,12 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                     Destination.UP_NEXT -> LibraryList(upNext, emptyLabel = "Up next is clear", hint = "Hold an item in To read to add it here. Tap a queued item to play.", onTap = { if (it.importState == "failed") vm.retryImport(it.id) else vm.startNow(it.id) }, onPlayNow = { if (it.importState == "failed") vm.retryImport(it.id) else vm.startNow(it.id) }, onRemoveQueue = { vm.removeFromQueue(it.id) }, onSelectPlaylist = { playlistItemPending = it }, modifier = Modifier.padding(padding), queueMode = true,
                         sortMode = upNextSortMode,
                         onSortModeChange = { mode, sorted -> upNextSortMode = mode; libraryPrefs.edit().putString("up_next_sort", mode).apply(); vm.reorderQueue(sorted.map { it.id }) },
-                        showSortPicker = true, allowReorder = upNextSortMode == "Manual", swipeRightAction = swipeRightAction, swipeLeftAction = swipeLeftAction,
+                        vm = vm, showSortPicker = true, allowReorder = upNextSortMode == "Manual", swipeRightAction = swipeRightAction, swipeLeftAction = swipeLeftAction,
                         onMoveItemUp = { vm.moveQueueItem(it.id, -1) }, onMoveItemDown = { vm.moveQueueItem(it.id, 1) }, itemSpacingDp = listSpacingDp,
                         archiveActionEnabled = true, readStateActionEnabled = true,
                         onMarkStateChange = { if (it.completed) vm.markItemUnread(it.id) else vm.markItemRead(it.id) },
                         onSwipeAction = { row, action -> if (action == "Delete") deleteItemPending = row else handleLibrarySwipe(action, row, vm, enqueueAndResetQueue) { playlistItemPending = row } })
-                    Destination.PLAYLISTS -> PlaylistList(playlists, onCreate = { showNewPlaylist = true }, onSelect = { selectedPlaylist = it; vm.openPlaylist(it.id) }, modifier = Modifier.padding(padding))
+                    Destination.PLAYLISTS -> PlaylistList(playlists, vm = vm, onCreate = { showNewPlaylist = true }, onSelect = { selectedPlaylist = it; vm.openPlaylist(it.id) }, modifier = Modifier.padding(padding))
                     Destination.HISTORY -> HistoryList(history, onRemove = vm::deleteHistory, onMarkUnread = vm::markItemUnread, onClear = { showClearHistory = true }, modifier = Modifier.padding(padding))
                     Destination.ARCHIVE -> ArchiveScreen(archived, onPlay = { vm.startNow(it.id) }, onRestore = vm::restoreArchivedItem,
                         onDelete = { deleteItemPending = it },
@@ -738,7 +741,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
             onDismissRequest = { deleteItemPending = null },
             containerColor = frostedDialogContainerColor(),
             title = { Text("Delete saved reading?") },
-            text = { Text("${item.title} will be removed from To read, Up next, Archive, playlists, and history. The saved document copy will also be deleted.") },
+            text = { Text("${item.title} will be removed from To read, Up next, Archive, playlists, and history. You can restore it from Deleted items in Settings until you permanently remove it.") },
             confirmButton = { TextButton(onClick = { vm.deleteReadingItem(item.id); deleteItemPending = null }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { deleteItemPending = null }) { Text("Cancel") } },
         ) }
@@ -777,16 +780,60 @@ private fun LibraryList(
     onMarkStateChange: (ReadingListRow) -> Unit = {},
     onMenuPlay: (ReadingListRow) -> Unit = onPlayNow,
     longPressLabel: String = "Play now",
+    vm: LibraryViewModel? = null,
 ) {
     val effectiveSortMode = if (!showDurations && sortMode in setOf("Shortest", "Longest")) "Newest" else sortMode
-    val shownRows = remember(rows, effectiveSortMode, queueMode) { sortLibraryRows(rows, effectiveSortMode, queueMode) }
+    val allItems = if (vm != null) vm.allItems.collectAsStateWithLifecycle().value else emptyList()
+    val memberships = if (vm != null) vm.memberships.collectAsStateWithLifecycle().value else emptyList()
+    val playlists = if (vm != null) vm.playlists.collectAsStateWithLifecycle().value else emptyList()
+    var query by rememberSaveable { mutableStateOf("") }
+    var typeFilter by rememberSaveable { mutableStateOf("All types") }
+    var stateFilter by rememberSaveable { mutableStateOf("All states") }
+    var selectionMode by rememberSaveable { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(emptySet<String>()) }
+    var confirmBulkDelete by remember { mutableStateOf(false) }
+    var bulkPlaylist by remember { mutableStateOf(false) }
+    val corpus = remember(allItems) { allItems.associateBy { it.id } }
+    val shownRows = remember(rows, effectiveSortMode, queueMode, query, typeFilter, stateFilter, allItems) {
+        sortLibraryRows(rows.filter { row ->
+            val item = corpus[row.id]
+            (typeFilter == "All types" || row.sourceType.equals(typeFilter, true)) &&
+            (stateFilter == "All states" || when(stateFilter) { "Ready" -> row.importState == "ready"; "Needs attention" -> row.importState != "ready"; "Partly heard" -> row.sentenceIndex > 0; "Read" -> row.completed; else -> !row.completed }) &&
+            (query.isBlank() || listOf(row.title, row.sourceName.orEmpty(), item?.normalizedText.orEmpty(), item?.tags.orEmpty()).any { it.contains(query.trim(), true) })
+        }, effectiveSortMode, queueMode)
+    }
+    LaunchedEffect(rows) { selected = selected.intersect(rows.map { it.id }.toSet()) }
+    if (confirmBulkDelete) AlertDialog(onDismissRequest = { confirmBulkDelete = false }, title = { Text("Delete ${selected.size} items?") },
+        text = { Text("Items leave the library on connected devices. You can restore them from Deleted items on this phone until you permanently remove them.") },
+        confirmButton = { TextButton(onClick = { vm?.bulkAction(selected, "Delete"); selected = emptySet(); confirmBulkDelete = false }) { Text("Delete") } },
+        dismissButton = { TextButton(onClick = { confirmBulkDelete = false }) { Text("Cancel") } })
+    if (bulkPlaylist) AlertDialog(onDismissRequest = { bulkPlaylist = false }, title = { Text("Add ${selected.size} items to playlist") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) { playlists.forEach { playlist -> TextButton(onClick = { vm?.bulkAction(selected, "Playlist", playlist.id); selected = emptySet(); bulkPlaylist = false }) { Text(playlist.name) } } } },
+        confirmButton = { TextButton(onClick = { bulkPlaylist = false }) { Text("Close") } })
     Column(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(collectionLabel ?: if (queueMode) "Your listening order" else "Saved for when you have a moment", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(tapHint ?: if (queueMode) "Tap to play · hold to play now" else "Tap to queue · hold to play", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val totalMinutes = shownRows.sumOf { it.estimatedSecondsAtOneX } / 60
             if (showDurations && shownRows.isNotEmpty()) Text("${shownRows.size} items  ·  ${formatDuration(totalMinutes * 60)} total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            if (showSortPicker) MenuChoiceDropdown("Sort", effectiveSortMode, if (showDurations) librarySortOptions else listOf("Manual", "Newest", "Oldest")) { choice ->
+            if (vm != null) {
+                OutlinedTextField(query, { query = it }, label = { Text("Search title, text, source or tag") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MenuChoiceDropdown("Type", typeFilter, listOf("All types", "url", "pdf", "docx", "doc", "text")) { typeFilter = it }
+                    MenuChoiceDropdown("State", stateFilter, listOf("All states", "Ready", "Needs attention", "Partly heard", "Read", "Unread")) { stateFilter = it }
+                }
+                TextButton(onClick = { selectionMode = !selectionMode; selected = emptySet() }) { Text(if (selectionMode) "Done selecting" else "Select items") }
+                if (selectionMode) {
+                    Text("${selected.size} selected", style = MaterialTheme.typography.labelMedium)
+                    Row(Modifier.horizontalScroll(rememberScrollState())) {
+                        TextButton(onClick = { selected = shownRows.map { it.id }.toSet() }) { Text("Select visible") }
+                        for (action in listOf("Queue", "Archive", "Read", "Playlist", "Delete")) TextButton(enabled = selected.isNotEmpty(), onClick = {
+                            when(action) { "Delete" -> confirmBulkDelete = true; "Playlist" -> bulkPlaylist = true; else -> { vm.bulkAction(selected, action); selected = emptySet() } }
+                        }) { Text(action) }
+                    }
+                }
+            }
+            if (showSortPicker) MenuChoiceDropdown("Sort", effectiveSortMode, if (showDurations) librarySortOptions else listOf("Manual", "Newest", "Oldest", "Title A–Z")) { choice ->
                 onSortModeChange(choice, sortLibraryRows(rows, choice, queueMode))
             }
         }
@@ -803,12 +850,17 @@ private fun LibraryList(
         } else {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, bottom = 18.dp)) {
                 items(shownRows, key = { it.id }) { row ->
-                    ReadingItemCard(row, queueMode, removeLabel, allowReorder, showDurations, swipeRightAction, swipeLeftAction, itemSpacingDp,
+                    if (selectionMode) Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = row.id in selected, onCheckedChange = { checked -> selected = if (checked) selected + row.id else selected - row.id })
+                        Text(row.title, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    } else ReadingItemCard(row, queueMode, removeLabel, allowReorder, showDurations, swipeRightAction, swipeLeftAction, itemSpacingDp,
                         onTap = { onTap(row) }, onPlayNow = { onPlayNow(row) }, onRemoveQueue = { onRemoveQueue(row) },
                         onSelectPlaylist = { onSelectPlaylist(row) }, onMoveUp = { onMoveItemUp(row) }, onMoveDown = { onMoveItemDown(row) },
                         onSwipeAction = { onSwipeAction(row, it) }, onMarkStateChange = { onMarkStateChange(row) },
                         archiveActionEnabled = archiveActionEnabled, readStateActionEnabled = readStateActionEnabled,
-                        onMenuPlayNow = { onMenuPlay(row) }, longPressLabel = longPressLabel)
+                        onMenuPlayNow = { onMenuPlay(row) }, longPressLabel = longPressLabel,
+                        onReadQuietly = { vm?.readQuietly(row.id) }, quietAvailable = vm != null,
+                        membershipLabel = memberships.filter { it.itemId == row.id }.mapNotNull { membership -> playlists.find { it.id == membership.playlistId }?.name }.joinToString(", "))
                 }
             }
         }
@@ -822,7 +874,8 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                            onTap: () -> Unit, onPlayNow: () -> Unit, onRemoveQueue: () -> Unit, onSelectPlaylist: () -> Unit,
                            onMoveUp: () -> Unit, onMoveDown: () -> Unit, onSwipeAction: (String) -> Unit,
                             onMarkStateChange: () -> Unit, archiveActionEnabled: Boolean, readStateActionEnabled: Boolean,
-                            onMenuPlayNow: () -> Unit = onPlayNow, longPressLabel: String = "Play now") {
+                            onMenuPlayNow: () -> Unit = onPlayNow, longPressLabel: String = "Play now",
+                            onReadQuietly: () -> Unit = {}, quietAvailable: Boolean = false, membershipLabel: String = "") {
     var menu by remember { mutableStateOf(false) }
     val ready = row.importState == "ready"
     val swipeState = rememberSwipeToDismissBoxState()
@@ -893,7 +946,9 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                 if (row.importState != "ready") {
                     Spacer(Modifier.height(6.dp))
                     Text(row.warning ?: when (row.importState) { "failed" -> if (row.sourceType == "url") "Import failed · tap to retry" else "Import failed · share the document again to retry"; else -> "Preparing text…" }, style = MaterialTheme.typography.bodySmall, color = if (row.importState == "failed") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                } else if (row.sentenceIndex > 0) {
+                }
+                if (membershipLabel.isNotBlank()) Text("Playlists: $membershipLabel", style = MaterialTheme.typography.labelSmall)
+                if (row.importState == "ready" && row.sentenceIndex > 0) {
                     Spacer(Modifier.height(6.dp))
                     Text("Partly heard", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 }
@@ -906,6 +961,7 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(20.dp),
                         containerColor = menuSurfaceColor(), tonalElevation = 10.dp,
                         modifier = Modifier.frostedGlass(RoundedCornerShape(20.dp))) {
+                        if (quietAvailable) DropdownMenuItem(text = { Text("Read quietly") }, enabled = ready, onClick = { menu = false; onReadQuietly() })
                         DropdownMenuItem(text = { Text("Play now") }, enabled = ready, onClick = { menu = false; onMenuPlayNow() })
                         if (readStateActionEnabled) DropdownMenuItem(text = { Text(if (row.completed) "Mark as unread" else "Mark as read") }, onClick = { menu = false; onMarkStateChange() })
                         if (archiveActionEnabled) DropdownMenuItem(text = { Text("Move to Archive") }, onClick = { menu = false; onSwipeAction("Archive") })
@@ -935,9 +991,10 @@ private fun handleLibrarySwipe(action: String, row: ReadingListRow, vm: LibraryV
     }
 }
 
-private val librarySortOptions = listOf("Manual", "Newest", "Oldest", "Shortest", "Longest")
+private val librarySortOptions = listOf("Manual", "Newest", "Oldest", "Title A–Z", "Shortest", "Longest")
 
 internal fun sortLibraryRows(rows: List<ReadingListRow>, mode: String, queueMode: Boolean): List<ReadingListRow> = when (mode) {
+    "Title A–Z" -> rows.sortedBy { it.title.lowercase() }
     "Newest" -> rows.sortedByDescending { it.importedAt }
     "Oldest" -> rows.sortedBy { it.importedAt }
     "Shortest" -> rows.sortedWith(compareBy<ReadingListRow> { it.estimatedSecondsAtOneX }.thenByDescending { it.importedAt })
@@ -955,7 +1012,8 @@ private fun ProgressTrail(heard: Boolean, completed: Boolean) {
 }
 
 @Composable
-private fun PlaylistList(items: List<PlaylistEntity>, onCreate: () -> Unit, onSelect: (PlaylistEntity) -> Unit, modifier: Modifier = Modifier) {
+private fun PlaylistList(items: List<PlaylistEntity>, vm: LibraryViewModel, onCreate: () -> Unit, onSelect: (PlaylistEntity) -> Unit, modifier: Modifier = Modifier) {
+    val memberships by vm.memberships.collectAsStateWithLifecycle()
     Column(modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Keep longer reads together", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -968,7 +1026,7 @@ private fun PlaylistList(items: List<PlaylistEntity>, onCreate: () -> Unit, onSe
                     Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Bookmarks, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(14.dp))
-                        Column { Text(playlist.name, style = MaterialTheme.typography.titleMedium); Text("Playlist", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Column { Text(playlist.name, style = MaterialTheme.typography.titleMedium); Text("${memberships.count { it.playlistId == playlist.id }} items", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                 }
             }
@@ -978,10 +1036,18 @@ private fun PlaylistList(items: List<PlaylistEntity>, onCreate: () -> Unit, onSe
 
 @Composable
 private fun PlaylistDetail(playlist: PlaylistEntity, rows: List<ReadingListRow>, vm: LibraryViewModel, enqueue: (String) -> Unit, itemSpacingDp: Int, modifier: Modifier = Modifier) {
+    val playlists by vm.playlists.collectAsStateWithLifecycle()
+    val current = playlists.find { it.id == playlist.id }
+    var rename by remember { mutableStateOf(false) }
+    var remove by remember { mutableStateOf(false) }
+    if (rename) NameDialog("Rename playlist", "Save", { rename = false }, { vm.renamePlaylist(playlist.id, it); rename = false })
+    if (remove) AlertDialog(onDismissRequest = { remove = false }, title = { Text("Delete playlist?") }, text = { Text("Saved articles stay in your library. Only this playlist and its memberships are removed.") },
+        confirmButton = { TextButton(onClick = { vm.deletePlaylist(playlist.id); remove = false }) { Text("Delete playlist") } }, dismissButton = { TextButton(onClick = { remove = false }) { Text("Cancel") } })
     Column(modifier.fillMaxSize()) {
-        Text("Saved in this playlist", Modifier.padding(horizontal = 20.dp, vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (rows.isEmpty()) EmptyState("This playlist is empty", "Add items from To read using the item menu.", Modifier.weight(1f))
-        else LibraryList(rows, "This playlist is empty", "Add items from To read using the item menu.", onTap = { enqueue(it.id) }, onPlayNow = { vm.startNow(it.id) }, onRemoveQueue = { vm.removeFromPlaylist(playlist.id, it.id) }, onSelectPlaylist = {}, modifier = Modifier.weight(1f), queueMode = true, removeLabel = "Remove from playlist", collectionLabel = "Saved in this playlist", allowReorder = false, itemSpacingDp = itemSpacingDp)
+        Text(current?.name ?: "Playlist deleted", Modifier.padding(horizontal = 20.dp), style = MaterialTheme.typography.titleMedium)
+        if (current != null) Row { TextButton(onClick = { rename = true }) { Text("Rename") }; TextButton(onClick = { remove = true }) { Text("Delete playlist") } }
+        LibraryList(rows, "This playlist is empty", "Add items from To read using the item menu.", onTap = { vm.startNow(it.id) }, onPlayNow = { vm.startNow(it.id) }, onRemoveQueue = { vm.removeFromPlaylist(playlist.id, it.id) }, onSelectPlaylist = {}, modifier = Modifier.weight(1f), queueMode = true, removeLabel = "Remove from playlist", collectionLabel = "${rows.size} items", allowReorder = true, itemSpacingDp = itemSpacingDp,
+            onMoveItemUp = { vm.movePlaylistItem(playlist.id, it.id, -1) }, onMoveItemDown = { vm.movePlaylistItem(playlist.id, it.id, 1) }, vm = vm)
     }
 }
 
@@ -1084,6 +1150,7 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                            swipeLeftAction: String, setSwipeLeftAction: (String) -> Unit,
                            playbackSpeed: Float, setPlaybackSpeed: (Float) -> Unit,
                            diagnosticEvents: List<AppDiagnostics.Entry>, clearDiagnosticEvents: () -> Unit,
+                           mobileTools: @Composable () -> Unit = {},
                            onOpenAbout: () -> Unit = {},
                            modifier: Modifier = Modifier) {
     var appearanceExpanded by rememberSaveable { mutableStateOf(false) }
@@ -1213,7 +1280,8 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
         add("Offline · Kokoro · $selectedOfflineVoiceName")
     }.joinToString("\n")
     LazyColumn(modifier.fillMaxSize().testTag("settings-list"), contentPadding = androidx.compose.foundation.layout.PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { SettingsSectionHeader("Appearance", "Theme, reading and app fonts, and layout", appearanceExpanded) { appearanceExpanded = !appearanceExpanded } }
+        item { mobileTools()
+        SettingsSectionHeader("Appearance", "Theme, reading and app fonts, and layout", appearanceExpanded) { appearanceExpanded = !appearanceExpanded } }
             if (appearanceExpanded) {
             item { SettingsGroupHeading("Theme") }
             item {
@@ -1836,6 +1904,7 @@ private fun VoiceFilterDropdown(
 private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose: () -> Unit, onExportMp3: (String) -> Unit, exportStatus: String?, cancelExport: () -> Unit,
                         readerTextScale: Float, readerSpacing: String, readerHighlight: String, durationDisplay: String, readerFont: String,
                         modifier: Modifier = Modifier) {
+    val quiet by vm.quietReading.collectAsStateWithLifecycle()
     val speed by vm.playbackSpeed.collectAsStateWithLifecycle()
     val playback by vm.playback.collectAsStateWithLifecycle()
     var timerMenu by remember { mutableStateOf(false) }
@@ -1851,7 +1920,8 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
     val cursorConflict = resumeConflicts["reading_cursors/${item.id}"]
     val defaultsConflict = resumeConflicts["reader_defaults/global"]
     val offsets = remember(item.normalizedText, sentences) { dev.yomu.app.data.ReadingAnchor.offsets(item.normalizedText, sentences) }
-    var followNarration by rememberSaveable(item.id) { mutableStateOf(playback?.itemId == item.id && playback?.isPlaying == true) }
+    var followNarration by rememberSaveable(item.id) { mutableStateOf(!quiet) }
+    LaunchedEffect(quiet) { followNarration = !quiet }
     val readerSyncPrefs = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("reader_sync_settings", android.content.Context.MODE_PRIVATE)
     var localOverride by rememberSaveable { mutableStateOf(readerSyncPrefs.getBoolean("local_override", true)) }
     val sharedFont = when (sharedDefaults?.font) { "mono" -> "Monospace"; "sans" -> "Default app font"; else -> "Serif" }
@@ -1867,7 +1937,10 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
     LaunchedEffect(progress?.sentenceIndex, sentences.size) {
         positionDraft = if (sentences.size > 1) (progress?.sentenceIndex ?: 0).toFloat() / (sentences.size - 1) else 0f
     }
-    val current = progress?.sentenceIndex ?: -1
+    val current = if (playback?.itemId == item.id) playback!!.sentenceIndex.takeIf { it in sentences.indices } ?: -1 else -1
+    val seekDisplayed: (Int) -> Unit = { index -> if (playback?.itemId == item.id) vm.seekSentence(index) else vm.startNowAt(item.id, index) }
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(playback?.sleepUntil) { while (playback?.sleepUntil ?: 0L > 0L) { now = System.currentTimeMillis(); delay(1000) } }
     LaunchedEffect(current, sentences.size, followNarration) {
         if (followNarration && playback?.itemId == item.id && current in sentences.indices) {
             val offset = -(readingListState.layoutInfo.viewportSize.height / 3)
@@ -1881,6 +1954,11 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
     val elapsedEstimate = durationAtSpeed * heardWords / totalWords
     val remainingEstimate = (durationAtSpeed - elapsedEstimate).coerceAtLeast(0)
     Column(modifier.fillMaxSize().padding(horizontal = 21.dp)) {
+        if (playback != null && playback?.itemId != item.id) Text("Playing: ${playback?.title}. Listen here starts this article.", style = MaterialTheme.typography.bodySmall)
+        TextButton(onClick = { if (quiet) vm.startNow(item.id) else vm.readQuietly(item.id) }) { Text(if (quiet) "Listen here" else "Read quietly") }
+        ReaderItemTools(item, vm, offsets.getOrElse(readingListState.firstVisibleItemIndex) { 0 }, playback?.sentenceIndex?.let { offsets.getOrElse(it) { 0 } }, { offset ->
+            followNarration = false; readerScope.launch { readingListState.scrollToItem(offsets.indexOfLast { it <= offset }.coerceAtLeast(0)) }
+        })
         var resumeOptions by rememberSaveable { mutableStateOf(false) }
         TextButton(onClick = { resumeOptions = !resumeOptions }) { Text(if (resumeOptions) "Hide reading & resume options" else if (cursorConflict != null || defaultsConflict != null) "Review resume conflict" else "Reading & resume options") }
         if (resumeOptions) {
@@ -1919,16 +1997,16 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
                 val lineMultiplier = if (!localOverride && sharedDefaults != null) sharedDefaults!!.spacing.toFloat() else when (readerSpacing) { "Compact" -> 1.25f; "Relaxed" -> 1.75f; else -> 1.5f }
                 val hasBackgroundHighlight = active && readerHighlight == "Background"
                 Surface(
-                    onClick = { vm.seekSentence(index) },
+                    onClick = { if (!quiet) seekDisplayed(index) },
                     color = if (hasBackgroundHighlight) MaterialTheme.colorScheme.primary.copy(alpha = .16f) else Color.Transparent,
                     shape = RoundedCornerShape(8.dp),
                 ) {
-                    Text(sentences[index], Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp),
+                    SelectionContainer { Text(sentences[index], Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp),
                         style = style.copy(
                             fontSize = style.fontSize * effectiveScale,
                             lineHeight = style.fontSize * effectiveScale * lineMultiplier,
                         ),
-                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                        color = if (active && !quiet) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) }
                 }
             }
         }
@@ -1941,13 +2019,16 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
                 Icon(Icons.Default.FileDownload, contentDescription = "Export MP3")
             }
         }
-        Surface(
+        if (!quiet) Surface(
             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).frostedGlass(RoundedCornerShape(30.dp)),
             color = frostedSurfaceColor(),
             shape = RoundedCornerShape(30.dp),
             tonalElevation = 6.dp,
         ) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(if (playback?.itemId == item.id) playback?.phase ?: "Paused" else "Ready to listen", style = MaterialTheme.typography.labelMedium)
+                if (playback?.stopAtEnd == true) Text("Stopping at end of item", style = MaterialTheme.typography.labelMedium)
+                if ((playback?.sleepUntil ?: 0) > 0) Text("Sleep timer: ${formatClockDuration(((playback!!.sleepUntil - now).coerceAtLeast(0) / 1000).toInt())}", style = MaterialTheme.typography.labelMedium)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(if (sentences.isEmpty()) "No readable text" else "${((progress?.sentenceIndex ?: 0) + 1).coerceAtMost(sentences.size)} of ${sentences.size} sentences",
                         Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
@@ -1956,7 +2037,7 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
                 if (sentences.size > 1) {
                     Column {
                         Slider(value = positionDraft.coerceIn(0f, 1f), onValueChange = { positionDraft = it },
-                            onValueChangeFinished = { vm.seekSentence((positionDraft * (sentences.size - 1)).roundToInt()) },
+                            onValueChangeFinished = { seekDisplayed((positionDraft * (sentences.size - 1)).roundToInt()) },
                             valueRange = 0f..1f,
                             modifier = Modifier.semantics {
                                 contentDescription = "Reading position"
@@ -1991,14 +2072,14 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
                     ) {
                         Text("${"%.1f".format(Locale.US, speed)}×", maxLines = 1)
                     }
-                    IconButton(onClick = vm::previousSentence, modifier = Modifier.size(56.dp)) {
+                    IconButton(onClick = { seekDisplayed(((progress?.sentenceIndex ?: 0) - 1).coerceAtLeast(0)) }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.SkipPrevious, "Previous sentence", modifier = Modifier.size(30.dp))
                     }
-                    FilledIconButton(onClick = vm::togglePlayback, modifier = Modifier.size(68.dp)) {
+                    FilledIconButton(onClick = { if (playback?.itemId == item.id) vm.togglePlayback() else vm.startNow(item.id) }, modifier = Modifier.size(56.dp)) {
                         Icon(if (playback?.isPlaying == true) Icons.Default.Pause else Icons.Default.PlayArrow,
                             if (playback?.isPlaying == true) "Pause reading" else "Play or pause", modifier = Modifier.size(36.dp))
                     }
-                    IconButton(onClick = vm::nextSentence, modifier = Modifier.size(56.dp)) {
+                    IconButton(onClick = { seekDisplayed(((progress?.sentenceIndex ?: 0) + 1).coerceAtMost(sentences.lastIndex.coerceAtLeast(0))) }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.SkipNext, "Next sentence", modifier = Modifier.size(30.dp))
                     }
                     Box {
@@ -2011,6 +2092,7 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
                             listOf(5, 10, 15, 30, 60).forEach { minutes ->
                                 DropdownMenuItem(text = { Text("Stop in $minutes minutes") }, onClick = { vm.setSleepTimer(minutes); timerMenu = false })
                             }
+                            DropdownMenuItem(text = { Text("Stop at end of item") }, onClick = { vm.setSleepTimer(-1); timerMenu = false })
                             DropdownMenuItem(text = { Text("Cancel sleep timer") }, onClick = { vm.setSleepTimer(0); timerMenu = false })
                         }
                     }

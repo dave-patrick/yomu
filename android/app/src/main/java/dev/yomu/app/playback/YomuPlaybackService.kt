@@ -74,6 +74,9 @@ class YomuPlaybackService : MediaLibraryService() {
     private var offlineNoticePlayed = false
     private var lastElevenLabsFailure: String? = null
     private var sleepTimer: Job? = null
+    private var sleepUntil = 0L
+    private var stopAtEnd = false
+    private var playbackPhase = "Paused"
     private var pendingOfflineFile: File? = null
     private var pendingOfflineIndex = -1
     private val sentenceBuffer = SentenceLookAhead<GeneratedSentence>(scope)
@@ -291,7 +294,11 @@ class YomuPlaybackService : MediaLibraryService() {
         when (intent?.action) {
             ACTION_PLAY_ITEM -> intent.getStringExtra(EXTRA_ITEM_ID)?.let { playItem(it, intent.getIntExtra(EXTRA_SENTENCE, 0)) }
             ACTION_STOP -> player.pause()
-            ACTION_TOGGLE -> if (player.isPlaying) player.pause() else if (player.currentMediaItem == null) generateAndPlayNext() else player.play()
+            ACTION_TOGGLE -> if (player.isPlaying) player.pause() else {
+                val rewind = speechPreferences.getInt("resume_rewind_sentences", 0).coerceIn(0, 3)
+                if (rewind > 0 && sentenceIndex > 0) { sentenceIndex = (sentenceIndex - rewind).coerceAtLeast(0); player.stop(); generateAndPlayNext() }
+                else if (player.currentMediaItem == null) generateAndPlayNext() else player.play()
+            }
             ACTION_NEXT -> { sentenceIndex = (sentenceIndex + 1).coerceAtMost(sentences.size); player.stop(); generateAndPlayNext() }
             ACTION_PREVIOUS -> { sentenceIndex = (sentenceIndex - 1).coerceAtLeast(0); player.stop(); generateAndPlayNext() }
             ACTION_SEEK -> intent.getIntExtra(EXTRA_SENTENCE, -1).takeIf { it >= 0 }?.let { playItem(itemId ?: return START_NOT_STICKY, it) }
@@ -303,7 +310,16 @@ class YomuPlaybackService : MediaLibraryService() {
             ACTION_SLEEP -> {
                 sleepTimer?.cancel()
                 val minutes = intent.getIntExtra(EXTRA_MINUTES, 0)
-                if (minutes > 0) sleepTimer = scope.launch { delay(minutes * 60_000L); player.pause() }
+                stopAtEnd = minutes == -1
+                sleepUntil = if (minutes > 0) System.currentTimeMillis() + minutes * 60_000L else 0L
+                publishSnapshot()
+                if (minutes > 0) sleepTimer = scope.launch {
+                    delay(minutes * 60_000L)
+                    invalidatePreparedSpeech()
+                    player.pause()
+                    sleepUntil = 0L
+                    publishSnapshot()
+                }
             }
             ACTION_ENABLE_CALL_MONITOR -> registerPhoneStateMonitor()
             ACTION_DISABLE_CALL_MONITOR -> {
@@ -403,6 +419,7 @@ class YomuPlaybackService : MediaLibraryService() {
                     repository.completeItem(id)
                 }
                 getSharedPreferences("yomu_playback", MODE_PRIVATE).edit().remove("item_id").remove("sentence").apply()
+                if (stopAtEnd) { stopAtEnd = false; itemId = null; return@withSpeechCpuAwake }
                 val interrupted = playNowResume.takeAfterCompletion(id)
                 persistPlayNowResumePoint()
                 if (interrupted != null) playItem(interrupted.itemId, interrupted.sentenceIndex, skipReturnCapture = true)
@@ -414,6 +431,8 @@ class YomuPlaybackService : MediaLibraryService() {
             return
         }
         isGenerating = true
+        playbackPhase = "Preparing"
+        publishSnapshot()
         val index = sentenceIndex
         val epoch = sentenceBuffer.epoch
         sentenceBuffer.discardBefore(index)
@@ -428,6 +447,8 @@ class YomuPlaybackService : MediaLibraryService() {
                 throw error
             } catch (_: Exception) {
                 if (epoch == sentenceBuffer.epoch) {
+                    playbackPhase = "Failed"
+                    publishSnapshot()
                     PlaybackEvents.report("Could not start speech. Check your voice settings or install the offline voice in Settings.")
                     player.pause()
                 }
@@ -531,7 +552,8 @@ class YomuPlaybackService : MediaLibraryService() {
 
     private fun publishSnapshot() {
         val id = itemId ?: return
-        PlaybackEvents.publish(PlaybackEvents.Snapshot(id, title, player.isPlaying, sentenceIndex, sentences.size))
+        PlaybackEvents.publish(PlaybackEvents.Snapshot(id, title, player.isPlaying, sentenceIndex, sentences.size,
+            if (player.isPlaying) "Playing" else if (isGenerating) "Preparing" else playbackPhase.takeIf { it == "Failed" } ?: "Paused", sleepUntil, stopAtEnd))
     }
 
     @Suppress("MissingPermission")

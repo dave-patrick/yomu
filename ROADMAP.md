@@ -64,6 +64,11 @@ while MP3 generation is an explicit export.
   Web audio, shared global preferences, tags, and Raindrop integration are planned.
   New article/document extraction currently depends on the phone.
 
+Installed 2026-10-07: Alpha19 fixes delayed resume initialization for narration
+following and uses the live playback sentence for highlighting/automatic scrolling.
+33 unit tests and four device migration tests passed; resumed-playback visual
+acceptance remains pending. See [Resume highlight fix](docs/RESUMED-HIGHLIGHT-2026-10-07.md).
+
 ## Priority assessment
 
 ### Top five remaining priorities — 2026-10-07
