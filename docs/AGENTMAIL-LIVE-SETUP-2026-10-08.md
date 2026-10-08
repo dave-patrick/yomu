@@ -15,9 +15,9 @@
 
 ## Acceptance still open
 
-- Fresh AgentMail provider delivery. A manually signed backfill is not proof of the provider-to-webhook path.
+- Fresh AgentMail provider delivery verified: forwarded TLDR issue arrived via the live webhook at 11:50 AM, then saved to Newsletters and To read. A second copy was flagged for duplicate review.
 - A distinct subsequent issue automatically assigned by the rule without duplicate import.
-- Android sync and reading/listening verification. Device connected through adb but was locked during the check.
+- First issue verified in Android To read with Newsletters membership after the phone was unlocked. Reading/listening acceptance remains open.
 - Newsletter text polish: this real forwarded email contains hidden preheader padding and long tracking links. Extraction succeeds, but readable-text cleanup needs a separate focused pass.
 
 No email was sent, no sender links were followed, and capture did not start playback. Other newsletter senders still require preview and routing.
