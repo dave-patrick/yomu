@@ -40,7 +40,8 @@ internal fun ReaderItemTools(item: ReadingItemEntity, vm: LibraryViewModel, offs
     TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Hide article tools" else "Source, tags & bookmarks (${annotations.size})") }
     if (expanded) Column(Modifier.fillMaxWidth().heightIn(max = 280.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item.sourceUrl?.takeIf { it.startsWith("https://") || it.startsWith("http://") }?.let { url -> TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }) { Text("Open source") } }
-        if (item.sourceType != "url") {
+        if (item.sourceType == "newsletter") Text("Email body saved for reading.", style = MaterialTheme.typography.bodySmall)
+        if (item.sourceType != "url" && item.sourceType != "newsletter") {
             val available = item.originalFilePath?.let { File(it).isFile } == true
             Text(if (available) "Original saved on this phone" else "Original is not downloaded", style = MaterialTheme.typography.bodySmall)
             if (available) TextButton(onClick = { original.launch(item.sourceName ?: item.title) }) { Text("Save original to files") }

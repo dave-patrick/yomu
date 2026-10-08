@@ -253,4 +253,10 @@ def download(ident: str):
         raise HTTPException(404, 'File not found.')
     return FileResponse(DATA / row['id'], filename=row['name'], media_type='application/octet-stream')
 
+from newsletters import NewsletterService, create_router
+newsletter_service = NewsletterService(connect, write, LOCK)
+app.include_router(create_router(newsletter_service))
+app.add_event_handler('startup', newsletter_service.start)
+app.add_event_handler('shutdown', newsletter_service.shutdown)
+
 app.mount('/', StaticFiles(directory=ROOT / 'static', html=True), name='web')

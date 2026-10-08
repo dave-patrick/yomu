@@ -1,0 +1,18 @@
+.newsletter-section{padding-block:26px;border-bottom:1px solid var(--line)}
+.newsletter-section h2{margin:0 0 14px;font-size:22px}
+.section-title{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.section-title h2{margin:0}
+.newsletter-row{padding-block:18px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.newsletter-row:last-child{border-bottom:0}
+.newsletter-row h3{margin:0 0 6px;font-size:17px}
+.newsletter-row p{margin:6px 0 12px;color:var(--muted)}
+.newsletter-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.newsletter-controls select{flex:1 1 180px;min-width:0;max-width:320px}
+.email-preview{white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;padding:18px;margin:16px 0;background:var(--panel);border:1px solid var(--line);border-radius:8px;line-height:1.7}
+.check-row{display:flex;align-items:flex-start;gap:10px;line-height:1.5}
+.check-row input{width:20px;height:20px;flex-shrink:0;margin-top:3px}
+#destination{width:min(100%,380px);display:block;margin-top:10px}
+#newsletterNotice[data-error="true"]{color:var(--error,#da7272)}
+#receivingAddress{overflow-wrap:anywhere;font-weight:600}
+#sampleFile{max-width:100%;padding:10px;font-size:14px}
+@media(max-width:520px){.newsletter-controls select{max-width:none;width:100%}.newsletter-section{padding-block:20px}}

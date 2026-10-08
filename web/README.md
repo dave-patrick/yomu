@@ -91,3 +91,10 @@ the phone's listening position. Separate reading cursors, offline position retry
 conflict choices, and shared reader defaults are implemented for alpha18 pairing.
 See [Resume delivery](../docs/CROSS-DEVICE-RESUME-2026-10-07.md) for installation
 and device acceptance status. Browser audio remains planned.
+# Newsletter capture
+
+Settings > Newsletters supports .eml samples, safe text preview, one-playlist routing rules, and delivery review/retry. Email-body imports produce ready synced items without phone extraction. The durable queue runs inside this service using its existing SQLite disk; no separate worker or Redis is provisioned.
+
+The optional Postmark receiving hook stays disabled until `YOMU_NEWSLETTER_WEBHOOK_SECRET` (a separate random secret, minimum 32 characters) is configured. `YOMU_NEWSLETTER_ADDRESS` displays the actual inbound address privately in newsletter settings. The hook uses HTTPS Basic authentication with username `yomu`; do not reuse the library access key. Account setup and real email receipt remain outstanding. See [newsletter delivery/setup](../docs/NEWSLETTER-DELIVERY-2026-10-07.md).
+
+Validation: `python -m unittest test_sync test_newsletters` from this folder uses an isolated temporary database.

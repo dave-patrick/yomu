@@ -124,6 +124,13 @@ P1 is the next product work; P2 follows the core experience; P3 needs separate s
 
 ## Newsletter capture — planned 2026-10-07
 
+Implemented initial milestone: Settings > Newsletters, .eml preview, explicit
+newsletter-to-playlist rules, ready server-extracted text, durable retry/replay
+handling, and a disabled-until-configured Postmark adapter. Backend and isolated
+Chrome checks passed. External receiving setup and real forwarded-mail/phone
+acceptance remain open; mailbox connections remain phase two.
+See [delivery and setup](docs/NEWSLETTER-DELIVERY-2026-10-07.md).
+
 Owner-requested: support both forwarding newsletters to a private Yomu address and
 connecting a mailbox eventually, with automatic routing to a selected playlist.
 Start with forwarding, server-side email-body extraction, rule preview, durable

@@ -1,6 +1,6 @@
 # Newsletter capture and automatic playlist routing
 
-Planned 2026-10-07. Owner wants both email forwarding and connected-mailbox capture eventually. This document defines scope; no email account, inbound service, or scheduled importer has been enabled.
+Planned 2026-10-07. Owner wants both email forwarding and connected-mailbox capture eventually. The first sample/routing/backend milestone is now implemented; see [delivery and setup](NEWSLETTER-DELIVERY-2026-10-07.md). No external receiving account or mailbox connection has been enabled. Remaining design requirements below are acceptance goals, not assertions that every capability has shipped.
 
 ## Product experience
 
