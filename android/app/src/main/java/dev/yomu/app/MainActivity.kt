@@ -453,7 +453,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
             confirmButton = { TextButton(onClick = { showSearch = false }) { Text("Done") } },
             dismissButton = { TextButton(onClick = { libraryQuery = "" }) { Text("Clear") } },
         )
-        var showInbox by rememberSaveable { mutableStateOf(false) }
+        val showInbox = destination == Destination.INBOX
         var showSettings by rememberSaveable { mutableStateOf(false) }
         var showAbout by rememberSaveable { mutableStateOf(false) }
         var showAdd by rememberSaveable { mutableStateOf(false) }
@@ -467,7 +467,6 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
         var selectedPlaylist by remember { mutableStateOf<PlaylistEntity?>(null) }
         BackHandler(enabled = showInbox || reading != null || selectedPlaylist != null || showAbout || showSettings || navigationHistory.isNotEmpty()) {
             when {
-                showInbox -> showInbox = false
                 reading != null -> vm.closeReader()
                 selectedPlaylist != null -> selectedPlaylist = null
                 showAbout -> { showAbout = false; showSettings = true }
@@ -562,15 +561,15 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                     },
                     navigationIcon = {
                         if (showInbox || reading != null || selectedPlaylist != null || showSettings || showAbout) IconButton(onClick = {
-                            when { showInbox -> showInbox = false; reading != null -> vm.closeReader(); selectedPlaylist != null -> selectedPlaylist = null; showAbout -> { showAbout = false; showSettings = true }; else -> showSettings = false }
+                            when { reading != null -> vm.closeReader(); showInbox -> { destination = navigationHistory.lastOrNull() ?: Destination.TO_READ; navigationHistory = navigationHistory.dropLast(1) }; selectedPlaylist != null -> selectedPlaylist = null; showAbout -> { showAbout = false; showSettings = true }; else -> showSettings = false }
                         }) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
                     },
                     actions = {
-                        if (!showInbox && !showSettings && !showAbout && reading == null && selectedPlaylist == null) {
+                        if (!showSettings && !showAbout && reading == null && selectedPlaylist == null) {
                             if (destination == Destination.TO_READ || destination == Destination.UP_NEXT) {
                                 IconButton(onClick = { showSearch = true }) { Icon(Icons.Default.Search, contentDescription = "Search your library", tint = if (libraryQuery.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary) }
                             }
-                            IconButton(onClick = { showInbox = true }) { Icon(Icons.Default.Email, contentDescription = "Newsletter inbox") }
+                            IconButton(onClick = { if (destination != Destination.HISTORY) navigationHistory = navigationHistory + destination; destination = Destination.HISTORY }) { Icon(Icons.Default.History, contentDescription = "Read history") }
                             IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
                         } else if (showSettings) {
                             IconButton(onClick = {
@@ -587,7 +586,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
             },
             snackbarHost = { SnackbarHost(snackbar, Modifier.padding(bottom = 8.dp)) },
             bottomBar = {
-                if (!showInbox && reading == null && !showSettings && !showAbout && selectedPlaylist == null) {
+                if (reading == null && !showSettings && !showAbout && selectedPlaylist == null) {
                     Column {
                         playback?.let { state ->
                             CompactPlayer(
@@ -600,7 +599,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                             )
                         }
                         NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = .90f)) {
-                            Destination.entries.forEach { page ->
+                            Destination.entries.filter { it != Destination.HISTORY }.forEach { page ->
                                 NavigationBarItem(
                                     selected = destination == page,
                                     onClick = {
@@ -624,7 +623,6 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                     },
         ) { padding ->
             when {
-                showInbox -> NewsletterInbox(Modifier.padding(padding))
                 reading != null -> androidx.compose.runtime.key(reading!!.id) { ReaderScreen(reading!!, vm, onClose = vm::closeReader,
                     onExportMp3 = { name ->
                         val folder = exportTreeUri?.let(Uri::parse)
@@ -717,6 +715,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                         onMarkStateChange = { if (it.completed) vm.markItemUnread(it.id) else vm.markItemRead(it.id) },
                         onSwipeAction = { row, action -> if (action == "Delete") deleteItemPending = row else handleLibrarySwipe(action, row, vm, enqueueAndResetQueue) { playlistItemPending = row } })
                     Destination.PLAYLISTS -> PlaylistList(playlists, vm = vm, onCreate = { showNewPlaylist = true }, onSelect = { selectedPlaylist = it; vm.openPlaylist(it.id) }, modifier = Modifier.padding(padding))
+                    Destination.INBOX -> NewsletterInbox(Modifier.padding(padding))
                     Destination.HISTORY -> HistoryList(history, onRemove = vm::deleteHistory, onMarkUnread = vm::markItemUnread, onClear = { showClearHistory = true }, modifier = Modifier.padding(padding))
                     Destination.ARCHIVE -> ArchiveScreen(archived, onPlay = { vm.startNow(it.id) }, onRestore = vm::restoreArchivedItem,
                         onDelete = { deleteItemPending = it },
@@ -775,7 +774,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
 
 private enum class Destination(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     TO_READ("To read", Icons.Default.Bookmarks), UP_NEXT("Up next", Icons.Default.QueueMusic),
-    PLAYLISTS("Playlists", Icons.Default.Bookmarks), HISTORY("History", Icons.Default.History), ARCHIVE("Archive", Icons.Default.Archive)
+    PLAYLISTS("Playlists", Icons.Default.Bookmarks), INBOX("Inbox", Icons.Default.Email), HISTORY("History", Icons.Default.History), ARCHIVE("Archive", Icons.Default.Archive)
 }
 
 @Composable
