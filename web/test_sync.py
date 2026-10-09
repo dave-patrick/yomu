@@ -59,6 +59,33 @@ class SyncTests(unittest.TestCase):
         first=self.client.post('/api/articles',json={'url':'https://example.com/duplicate-contract'}).json()
         duplicate=self.client.post('/api/articles',json={'url':'https://example.com/duplicate-contract'}).json()
         self.assertEqual(duplicate,{'status':'already_saved','id':first['id']})
+    def test_duplicate_capture_ignores_tracking_and_fragment_for_existing_records(self):
+        url = 'https://EXAMPLE.com:443/duplicate-variants?issue=42&utm_source=email#intro'
+        first = self.client.post('/api/articles', json={'url': url}).json()
+        duplicate = self.client.post('/api/articles', json={
+            'url': 'https://example.com/duplicate-variants?issue=42&fbclid=click#end'
+        }).json()
+        self.assertEqual(duplicate, {'status': 'already_saved', 'id': first['id']})
+        different = self.client.post('/api/articles', json={
+            'url': 'https://example.com/duplicate-variants?issue=43'
+        }).json()
+        self.assertEqual(different['status'], 'saved')
+        self.assertNotEqual(different['id'], first['id'])
+
+    def test_duplicate_capture_matches_phone_synced_urls(self):
+        ident = 'phone-duplicate-url'
+        item = {'id': ident, 'title': 'Phone article', 'sourceType': 'url',
+                'sourceUrl': 'https://example.com/phone-duplicate?utm_medium=share',
+                'archived': True, 'inToRead': False}
+        response = self.client.post('/api/sync', json={'changes': [
+            {'kind': 'reading_items', 'id': ident, 'data': item, 'base': None}
+        ]})
+        self.assertEqual(response.status_code, 200)
+        duplicate = self.client.post('/api/articles', json={
+            'url': 'https://example.com/phone-duplicate#section'
+        }).json()
+        self.assertEqual(duplicate, {'status': 'already_saved', 'id': ident})
+
     def test_field_merge_and_same_field_conflict(self):
         base={'id':'merge','name':'Original','sortOrder':0,'createdAt':1}
         self.sync('merge',base)

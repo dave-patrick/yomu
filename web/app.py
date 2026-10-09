@@ -199,6 +199,28 @@ async def sync(request: Request):
         result['conflicts'] = conflicts
         return result
 
+def article_url_key(url):
+    """Compare article URLs without fragments or known tracking parameters."""
+    from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+    try:
+        parsed = urlsplit(url.strip())
+        host = (parsed.hostname or '').lower()
+        if parsed.scheme.lower() not in ('http', 'https') or not host:
+            return url
+        if ':' in host:
+            host = '[' + host + ']'
+        port = parsed.port
+        if port and (parsed.scheme.lower(), port) not in (('http', 80), ('https', 443)):
+            host += ':' + str(port)
+        # Keep content-bearing parameters and their order; remove only known trackers.
+        query = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+                 if not key.lower().startswith('utm_')
+                 and key.lower() not in ('fbclid', 'gclid', 'dclid', 'msclkid', 'mc_cid', 'mc_eid')]
+        return urlunsplit((parsed.scheme.lower(), host, parsed.path or '/', urlencode(query), ''))
+    except (ValueError, AttributeError):
+        return url
+
+
 @app.post('/api/articles')
 async def article(request: Request):
     body = await request.json()
@@ -210,7 +232,8 @@ async def article(request: Request):
     now = int(time.time()*1000)
     with LOCK, connect() as db:
         for row in db.execute("SELECT id, payload FROM records WHERE kind='reading_items' AND deleted=0"):
-            if json.loads(row['payload']).get('sourceUrl') == url:
+            existing_url = json.loads(row['payload']).get('sourceUrl')
+            if existing_url and article_url_key(existing_url) == article_url_key(url):
                 return {'status': 'already_saved', 'id': row['id']}
         ident = str(uuid.uuid4())
         write(db, 'reading_items', ident, dict(id=ident, title=str(body.get('title') or url)[:1000], sourceType='url', sourceUrl=url, sourceName=parsed.hostname, normalizedText='', importState='pending', warning='Waiting for phone to extract the article.', inToRead=True, importedAt=now, updatedAt=now, estimatedSecondsAtOneX=0, contentVersion=1, manualOrder=now, archived=False))
