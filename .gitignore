@@ -39,3 +39,6 @@ azure keys.txt
 web/.venv/
 web/data/
 web/.test-data/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

@@ -1,5 +1,7 @@
 # Yomu
 
+[Website](https://dave-patrick.github.io/yomu/) · [Help](https://dave-patrick.github.io/yomu/help.html) · [Downloads](https://github.com/dave-patrick/yomu/releases)
+
 **Yomu** is a native Android reading and listening library. Share articles, PDFs, Word documents, or other supported files into the app, organize them for later, and listen with online or local text-to-speech while the current sentence is highlighted.
 
 > **Project status:** active personal V1 development. The app builds as a debug APK for private sideloading. This is not a Play Store release. Some features have been exercised on the target Galaxy; the production app still needs further end-to-end device verification. See [Build status and limits](android/BUILD-AND-LIMITS.md) and [Spike results](spike/SPIKE-RESULTS.md).
