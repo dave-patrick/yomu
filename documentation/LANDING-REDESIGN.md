@@ -6,3 +6,16 @@ Local HTML asset references and JavaScript syntax checked. JetPane download/vers
 
 ## Fidelity and explanation update
 The approved mockup composition is the target. Main pages now explain the product, a three-step workflow, requirements and availability. Quantos recreates the connected notebook/source-panel/desk composition in blue; its diagram is labelled illustrative and the app remains planned. motus.leap uses its shipped Deltha lettering with an unframed symbol cleanup. Source checks pass; the browser connection timed out, so no rendered visual sign-off is claimed.
+
+## Layout variation
+
+The three landing pages shared one section order and one card grid, which made
+them read as a template. Yomu now inverts the header so navigation leads and the
+publisher mark sits last, keeps everything on a narrow centred measure with
+Literata, places the captures before the feature list, sets the features as a
+single ruled column and presents the walkthrough as three even columns. The
+approved direction is unchanged: #0c131d ground, #78b6ff accent, Source Sans 3
+with Literata, 760px breakpoint, publisher branding and the explanation /
+practical / download sequence. Copy, headings, links and the sentence
+highlighting interaction are unchanged; only layout and the CSS cache key moved
+to `faithful-4`. Source checks pass.
