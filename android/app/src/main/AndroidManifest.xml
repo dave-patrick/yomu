@@ -4,13 +4,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
-    <application
+    <application android:description="@string/publisher_description"
         android:name=".YomuApplication"
         android:allowBackup="false"
         android:icon="@mipmap/ic_yomu"
         android:label="Yomu"
         android:supportsRtl="true"
         android:theme="@style/Theme.Yomu">
+        <meta-data android:name="publisher" android:value="@string/publisher_name" />
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />

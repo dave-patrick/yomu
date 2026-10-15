@@ -1814,6 +1814,7 @@ private fun AboutScreen(modifier: Modifier = Modifier) {
                     contentScale = ContentScale.Fit,
                 )
                 Text("Your reading, ready to listen.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text("Published by " + context.getString(R.string.publisher_name), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = .45f))
                 Text(
                     "Yomu turns articles and documents into a listening library. Save something for later, choose a voice, and listen at your own pace with sentence-by-sentence reading progress.",

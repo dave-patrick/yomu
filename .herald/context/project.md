@@ -17,3 +17,5 @@ Software project in yomu. See existing project documentation for its purpose.
 - Herald compiler output replaces vendor files. Preserve and merge existing guidance before compiling.
 
 - Public landing/help source is site/; GitHub Pages publishes it independently of app hosting. See documentation/PUBLISHING.md. Preserve app branding, screenshots and existing build/device limitations.
+
+- The app publisher is Atomic 22 Industries. Keep publisher.json, package metadata and first-party app/site credits consistent; preserve existing licence and third-party attribution.
