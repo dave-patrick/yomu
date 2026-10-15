@@ -6,25 +6,30 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SentenceLookAheadTest {
-    @Test fun preparesAheadWithBoundedConcurrencyAndReusesRequests() = runBlocking {
+    @Test(timeout = 15000) fun preparesAheadWithBoundedConcurrencyAndReusesRequests() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val buffer = SentenceLookAhead<String>(scope, 2)
             val started = Channel<Int>(Channel.UNLIMITED)
             val gates = List(3) { CompletableDeferred<Unit>() }
             val requests = (0..2).map { i -> buffer.get(i) { started.send(i); gates[i].await(); "sentence$i" } }
-            withTimeout(5000) { started.receive(); started.receive() }
+            val firstStarted = withTimeout(5000) { listOf(started.receive(), started.receive()) }
+            assertEquals(2, firstStarted.toSet().size)
             assertTrue(started.tryReceive().isFailure)
             assertSame(requests[0], buffer.get(0) { error("Duplicate synthesis") })
-            gates[1].complete(Unit)
-            assertEquals("sentence1", requests[1].await())
-            assertEquals(2, withTimeout(5000) { started.receive() })
-            gates[0].complete(Unit); gates[2].complete(Unit)
+            // Dispatchers.IO does not guarantee submission order. Release a
+            // request that actually holds a permit, not an assumed index.
+            val released = firstStarted.first()
+            gates[released].complete(Unit)
+            assertEquals("sentence$released", requests[released].await())
+            val remaining = ((0..2).toSet() - firstStarted.toSet()).single()
+            assertEquals(remaining, withTimeout(5000) { started.receive() })
+            gates.forEach { it.complete(Unit) }
             assertEquals(listOf("sentence0", "sentence1", "sentence2"), requests.map { it.await() })
         } finally { scope.cancel() }
     }
 
-    @Test fun voiceChangeCancelsOldAudioAndCreatesFreshRequests() = runBlocking {
+    @Test(timeout = 15000) fun voiceChangeCancelsOldAudioAndCreatesFreshRequests() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val buffer = SentenceLookAhead<String>(scope)
@@ -39,7 +44,7 @@ class SentenceLookAheadTest {
         } finally { scope.cancel() }
     }
 
-    @Test fun playedSentencesAreDiscardedWithoutLosingFutureAudio() = runBlocking {
+    @Test(timeout = 15000) fun playedSentencesAreDiscardedWithoutLosingFutureAudio() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val buffer = SentenceLookAhead<String>(scope)
