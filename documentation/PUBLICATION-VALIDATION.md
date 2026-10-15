@@ -13,3 +13,9 @@ The initial Pages deployment failed because Pages had not yet been enabled. Afte
 The alpha25 APK is retained locally at `android/app/build/outputs/apk/debug/app-debug.apk` and excluded from git. It was not published as a new release. The public site deliberately points to the existing alpha14 prerelease and distinguishes it from current source.
 
 Before publishing a newer APK, finish the existing source/relinking/notices packaging work recorded in `spike/LICENSE-BOM.md`. The repository JNI SHA256 matches the prior audited source-build binary exactly: `3a9902e7a88d9f568e8fdc6de876d69147dbcd667b2d94e16f1d9d13afbb7567`. Versioned release notes must report what was built, tested, published, installed and device-verified separately.
+
+## Prepared candidate materials
+
+`output/release-candidate/` now contains the alpha25 debug APK, an app-source archive, an audited native-input archive and SHA256 checksums. The native archive excludes Git metadata and includes the source audit manifest. Extraction and CMake configuration using `scripts/rebuild-native.ps1 -ConfigureOnly` succeeded; a fresh native compilation is not claimed for this follow-up. The APK contains 35 licence/notice entries and no Azure Speech SDK native-library entry. The initial licence audit remains the source for the native closure's terms.
+
+Publication is pending the owner's explicit application-licence choice. The question presented proposes GPL-3.0-or-later, following the existing audit; no new app licence has been applied or new APK published while that choice is pending. The historical alpha14 download remains available.

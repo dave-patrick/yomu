@@ -17,7 +17,7 @@ $archive = Join-Path $output 'Yomu-native-inputs-alpha25.tar.gz'
 & tar -czf $archive --exclude=.git -C $audit @inputs
 if ($LASTEXITCODE) { throw 'Native-input archive failed' }
 Copy-Item (Join-Path $repo 'android/app/build/outputs/apk/debug/app-debug.apk') (Join-Path $output 'Yomu-1.0.0-alpha25-debug.apk')
-$records = foreach ($item in Get-ChildItem -LiteralPath $output -File | Where-Object Extension -in '.gz','.apk') {
+$records = foreach ($item in Get-ChildItem -LiteralPath $output -File | Where-Object Extension -in '.gz','.apk','.zip') {
   "$((Get-FileHash $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($item.Name)"
 }
 $records | Set-Content (Join-Path $output 'SHA256SUMS.txt')
