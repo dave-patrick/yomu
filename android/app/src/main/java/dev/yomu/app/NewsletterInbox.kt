@@ -106,6 +106,7 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(delivery.optString("title"), style = MaterialTheme.typography.titleMedium)
                 Text(delivery.optString("sender"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (delivery.optLong("receivedAt") > 0) Text(newsletterArrival(delivery.optLong("receivedAt")), style = MaterialTheme.typography.bodySmall)
                 val state = delivery.optString("state")
                 Text(when (state) { "imported" -> "Saved to library"; "possible_duplicate" -> "Possible duplicate — review before saving"; "needs_routing", "paused" -> "Awaiting review"; "ignored" -> "Dismissed"; "queued" -> "Preparing"; else -> state })
                 if (state in listOf("needs_routing", "paused", "possible_duplicate")) Row {

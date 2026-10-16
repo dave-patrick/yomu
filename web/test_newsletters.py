@@ -56,10 +56,40 @@ class NewsletterTests(unittest.TestCase):
             self.assertFalse(any(m['itemId'] == item_id for m in members))
         self.assertEqual(self.record(ident)['state'], 'imported')
 
+    def test_provider_arrival_is_preserved_and_invalid_date_falls_back(self):
+        from datetime import datetime, timezone
+        arrival = datetime.now(timezone.utc).replace(microsecond=0)
+        payload = self.payload()
+        payload['receivedAt'] = arrival.isoformat()
+        ident = self.accept(payload)
+        expected = int(arrival.timestamp() * 1000)
+        self.assertEqual(self.record(ident)['received_at'], expected)
+        response = self.route(ident, rule=False)
+        self.assertEqual(response.status_code, 200)
+        with backend.connect() as db:
+            item = json.loads(db.execute("SELECT payload FROM records WHERE kind='reading_items' AND id=?", (response.json()['itemId'],)).fetchone()[0])
+        self.assertEqual(item['importedAt'], expected)
+        payload = self.payload()
+        payload['receivedAt'] = 'invalid'
+        self.assertGreater(self.record(self.accept(payload))['received_at'], 0)
+
+    def test_old_preview_is_cleaned_again_when_saved(self):
+        ident = self.accept()
+        with backend.connect() as db:
+            preview = json.loads(self.record(ident)['preview'])
+            preview['text'] = 'Read [this](https://example.test/path) café. ★ 😀'
+            db.execute('UPDATE newsletter_deliveries SET preview=? WHERE id=?', (json.dumps(preview), ident))
+        response = self.route(ident, rule=False)
+        self.assertEqual(response.status_code, 200)
+        with backend.connect() as db:
+            item = json.loads(db.execute("SELECT payload FROM records WHERE kind='reading_items' AND id=?", (response.json()['itemId'],)).fetchone()[0])
+        self.assertEqual(item['normalizedText'], 'Read this café.')
+
     def test_preview_and_rule_then_automatic_ready_item(self):
         ident = self.accept()
         preview = self.client.get('/api/newsletters/deliveries/' + ident).json()
-        self.assertIn('https://example.test/story',preview['text'])
+        self.assertNotIn('https://example.test/story',preview['text'])
+        self.assertIn('Read more',preview['text'])
         self.assertNotIn('do not keep me',preview['text'])
         self.assertNotIn('tracker.test',preview['text'])
         self.assertEqual(self.route(ident).status_code,200)

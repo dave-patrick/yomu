@@ -77,7 +77,8 @@ async def receive(service, raw, headers):
         mail_headers = {name.lower(): value for name, value in (message.get('headers') or {}).items()}
         payload = dict(title=message.get('subject') or '', sender=message['from'],
                        text=message.get('text') or '', html=message.get('html') or '',
-                       listId=mail_headers.get('list-id', ''), messageId=mail_headers.get('message-id') or message_id)
+                       listId=mail_headers.get('list-id', ''), messageId=mail_headers.get('message-id') or message_id,
+                       receivedAt=message.get('timestamp') or '')
         if not all(isinstance(value, str) for value in payload.values()):
             raise ValueError('Invalid message fields')
         if len(json.dumps(payload).encode('utf-8')) > MAX_MESSAGE:

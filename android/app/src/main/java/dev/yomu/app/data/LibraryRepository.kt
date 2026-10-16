@@ -141,10 +141,19 @@ class LibraryRepository(private val database: LibraryDatabase) {
 
     suspend fun removeFromPlaylist(playlistId: String, itemId: String) = dao.removeMembership(playlistId, itemId)
 
-    suspend fun completeItem(itemId: String) = database.withTransaction {
+    suspend fun autoArchive(itemId: String, offset: Int, enabled: Boolean) = database.withTransaction {
+        if (!enabled) return@withTransaction
+        val item = dao.getItem(itemId) ?: return@withTransaction
+        if (!item.archived && reachedArchiveThreshold(offset, item.normalizedText.length)) {
+            // Keep the active queue entry until completion so narration is uninterrupted.
+            dao.upsertItem(item.copy(archived = true, inToRead = false, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    suspend fun completeItem(itemId: String, autoArchive: Boolean = false) = database.withTransaction {
         val item = dao.getItem(itemId) ?: return@withTransaction
         dao.addHistory(ReadHistoryEntity(UUID.randomUUID().toString(), itemId, System.currentTimeMillis()))
-        dao.upsertItem(item.copy(inToRead = false, updatedAt = System.currentTimeMillis()))
+        dao.upsertItem(item.copy(inToRead = false, archived = item.archived || autoArchive, updatedAt = System.currentTimeMillis()))
         dao.deleteQueueItem(itemId)
         compactQueue()
     }

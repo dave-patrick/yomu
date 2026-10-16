@@ -235,6 +235,10 @@ function fillRow(content, item, dates) {
     el('span', status.label, 'import-status ' + status.tone));
   if (ready) meta.append(el('span', Math.max(1, Math.round((item.estimatedSecondsAtOneX || 0) / 60)) + ' min'));
   content.append(meta);
+  if (item.sourceType === 'newsletter' && item.importedAt) {
+    const received = el('time', 'Received ' + new Intl.DateTimeFormat(undefined, {dateStyle:'medium', timeStyle:'short'}).format(item.importedAt), 'history-date');
+    received.dateTime = new Date(item.importedAt).toISOString(); content.append(received);
+  }
   if (view === 'history' && dates.get(item.id)) {
     const time = el('time', 'Last read ' + new Intl.DateTimeFormat(undefined, {dateStyle:'medium', timeStyle:'short'}).format(dates.get(item.id)), 'history-date');
     time.dateTime = new Date(dates.get(item.id)).toISOString(); content.append(time);

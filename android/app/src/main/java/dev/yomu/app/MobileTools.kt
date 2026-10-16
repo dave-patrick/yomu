@@ -89,6 +89,8 @@ internal fun MobileHealthTools(vm: LibraryViewModel) {
     var storage by remember { mutableStateOf("Measuring storage…") }
     val speech = context.getSharedPreferences("speech_preferences", 0)
     val content = context.getSharedPreferences("content_preferences", 0)
+    val library = context.getSharedPreferences("library_preferences", 0)
+    var autoArchive by rememberSaveable { mutableStateOf(library.getBoolean("auto_archive_98", false)) }
     var wifi by rememberSaveable { mutableStateOf(content.getBoolean("wifi_only", false)) }
     var charging by rememberSaveable { mutableStateOf(content.getBoolean("charging_only", false)) }
     var rewind by rememberSaveable { mutableIntStateOf(speech.getInt("resume_rewind_sentences", 0)) }
@@ -102,6 +104,11 @@ internal fun MobileHealthTools(vm: LibraryViewModel) {
     SettingsSectionHeader("Library health & recovery", "${items.size} saved items · ${deleted.size} deleted · ${if (ready) "offline voice ready" else "offline voice needed"}", expanded) { expanded = !expanded }
     if (expanded) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(storage, style = MaterialTheme.typography.bodySmall)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Auto-archive at 98% read", Modifier.weight(1f))
+            Switch(autoArchive, { autoArchive = it; library.edit().putBoolean("auto_archive_98", it).apply() })
+        }
+        Text("Applies as you read or listen on this phone. Keeps playlist membership and lets narration finish. Off by default.", style = MaterialTheme.typography.bodySmall)
         Text(sync.message, style = MaterialTheme.typography.bodySmall)
         sync.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Text("${items.count { it.importState != "ready" }} imports need attention", style = MaterialTheme.typography.bodySmall)

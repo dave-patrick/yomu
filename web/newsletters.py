@@ -8,9 +8,11 @@ import re
 import threading
 import time
 import uuid
+import unicodedata
 from email import policy
 from email.parser import BytesParser
 from email.utils import parseaddr
+from datetime import datetime
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
@@ -42,8 +44,6 @@ class ReadableHTML(HTMLParser):
             return
         if tag == 'a' and self.links:
             href = self.links.pop()
-            if href:
-                self.parts.append(' (' + href + ')')
         if tag in ('p', 'div', 'li', 'tr', 'h1', 'h2', 'h3', 'blockquote'):
             self.parts.append('\n')
 
@@ -53,6 +53,15 @@ class ReadableHTML(HTMLParser):
 
 
 def clean_text(text):
+    text = re.sub(r'\[([^]\n]+)]\([^\s)]+\)', r'\1', text)
+    text = re.sub(r'\b(?:[a-z][a-z0-9+.-]*://|www\.)[^\s<>"\[\]{}()]+',
+                  lambda match: re.search(r'[.,!?;:]*$', match[0])[0], text, flags=re.I)
+    text = ''.join('' if unicodedata.category(c) == 'Cf' else c if
+                   (unicodedata.category(c)[0] in 'LMN' or c.isspace() or c in '.,!?;:\'"’‘“”()-–—…') else ' '
+                   for c in text)
+    text = re.sub(r'\(\s*\)', ' ', text)
+    text = '\n'.join(line if any(unicodedata.category(c)[0] in 'LN' for c in line) else '' for line in text.split('\n'))
+    text = re.sub(r' +([.,!?;:])', r'\1', text)
     return '\n\n'.join(line for line in (re.sub(r'[ \t\r]+', ' ', line).strip() for line in text.split('\n')) if line)
 
 
@@ -153,6 +162,13 @@ class NewsletterService:
 
     def accept(self, payload, event_key):
         now = int(time.time() * 1000)
+        received = now
+        try:
+            stamp = datetime.fromisoformat(payload.get('receivedAt', '').replace('Z', '+00:00'))
+            if stamp.tzinfo is not None and 0 < stamp.timestamp() * 1000 <= now + 300000:
+                received = int(stamp.timestamp() * 1000)
+        except (ValueError, TypeError, AttributeError, OverflowError):
+            pass
         with self.lock, self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             old = db.execute('SELECT id,state FROM newsletter_deliveries WHERE event_key=?', (event_key,)).fetchone()
@@ -162,7 +178,7 @@ class NewsletterService:
                 raise HTTPException(503, 'Newsletter inbox is full. Resolve pending deliveries first.')
             ident = str(uuid.uuid4())
             db.execute('INSERT INTO newsletter_deliveries (id,event_key,received_at,state,payload) VALUES (?,?,?,?,?)',
-                       (ident, event_key, now, 'queued', json.dumps(payload)))
+                       (ident, event_key, received, 'queued', json.dumps(payload)))
             return dict(id=ident, state='queued')
 
     def playlist(self, db, ident):
@@ -177,7 +193,10 @@ class NewsletterService:
         if delivery['item_id']:
             raise HTTPException(409, 'This delivery has already been imported.')
         now, item_id = int(time.time() * 1000), str(uuid.uuid4())
-        text = preview['text']
+        # Re-clean at save time, including previews prepared by older releases.
+        text = clean_text(preview['text'])
+        if not text:
+            raise ValueError('No readable email body. Attachments are not imported yet.')
         item = dict(id=item_id, title=preview['title'], sourceType='newsletter', sourceName=preview['sender'],
                     sourceUrl=None, normalizedText=text, importState='ready', warning=None, inToRead=True,
                     importedAt=delivery['received_at'], updatedAt=now, estimatedSecondsAtOneX=max(1, len(text.split()) * 60 // 180),

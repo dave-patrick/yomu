@@ -528,6 +528,11 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
         if (showBrandSplash) {
             YomuBrandSplash()
         } else Scaffold(
+            containerColor = Color.Transparent,
+            modifier = Modifier.background(Brush.linearGradient(listOf(
+                MaterialTheme.colorScheme.primary.copy(alpha = .16f).compositeOver(MaterialTheme.colorScheme.background),
+                MaterialTheme.colorScheme.background,
+                MaterialTheme.colorScheme.primary.copy(alpha = .09f).compositeOver(MaterialTheme.colorScheme.background)))),
             contentWindowInsets = WindowInsets.navigationBars,
             floatingActionButtonPosition = FabPosition.End,
             floatingActionButton = {
@@ -578,8 +583,26 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                             }) {
                                 Icon(Icons.Default.WbSunny, contentDescription = "Cycle system, light, and dark themes")
                             }
+                        } else if (reading != null) {
+                            ArticleActions(reading!!.id, reading!!.title, vm)
                         } else if (selectedPlaylist != null) {
-                            IconButton(onClick = { selectedPlaylist = null }) { Icon(Icons.Default.MoreVert, contentDescription = "Playlist actions") }
+                            var playlistMenu by remember { mutableStateOf(false) }
+                            var renamePlaylist by remember { mutableStateOf(false) }
+                            var deletePlaylist by remember { mutableStateOf(false) }
+                            val playlist = selectedPlaylist!!
+                            if (renamePlaylist) NameDialog("Rename playlist", "Save", { renamePlaylist = false }, { vm.renamePlaylist(playlist.id, it); renamePlaylist = false })
+                            if (deletePlaylist) AlertDialog(onDismissRequest = { deletePlaylist = false }, title = { Text("Delete playlist?") },
+                                text = { Text("Saved articles stay in your library. Only this playlist is removed.") },
+                                confirmButton = { TextButton(onClick = { vm.deletePlaylist(playlist.id); deletePlaylist = false; selectedPlaylist = null }) { Text("Delete playlist") } },
+                                dismissButton = { TextButton(onClick = { deletePlaylist = false }) { Text("Cancel") } })
+                            Box {
+                                IconButton(onClick = { playlistMenu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "Playlist actions") }
+                                DropdownMenu(expanded = playlistMenu, onDismissRequest = { playlistMenu = false }) {
+                                    DropdownMenuItem(text = { Text("Rename playlist") }, onClick = { playlistMenu = false; renamePlaylist = true })
+                                    DropdownMenuItem(text = { Text("Delete playlist") }, onClick = { playlistMenu = false; deletePlaylist = true })
+                                    DropdownMenuItem(text = { Text("Back to playlists") }, onClick = { playlistMenu = false; selectedPlaylist = null })
+                                }
+                            }
                         }
                     },
                 )
@@ -899,7 +922,8 @@ private fun LibraryList(
                         archiveActionEnabled = archiveActionEnabled, readStateActionEnabled = readStateActionEnabled,
                         onMenuPlayNow = { onMenuPlay(row) }, longPressLabel = longPressLabel,
                         onReadQuietly = { vm?.readQuietly(row.id) }, quietAvailable = vm != null,
-                        membershipLabel = memberships.filter { it.itemId == row.id }.mapNotNull { membership -> playlists.find { it.id == membership.playlistId }?.name }.joinToString(", "))
+                        membershipLabel = memberships.filter { it.itemId == row.id }.mapNotNull { membership -> playlists.find { it.id == membership.playlistId }?.name }.joinToString(", "),
+                        onDelete = if (vm != null) ({ vm.deleteReadingItem(row.id) }) else null)
                 }
             }
         }
@@ -925,8 +949,11 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                            onMoveUp: () -> Unit, onMoveDown: () -> Unit, onSwipeAction: (String) -> Unit,
                             onMarkStateChange: () -> Unit, archiveActionEnabled: Boolean, readStateActionEnabled: Boolean,
                             onMenuPlayNow: () -> Unit = onPlayNow, longPressLabel: String = "Play now",
-                            onReadQuietly: () -> Unit = {}, quietAvailable: Boolean = false, membershipLabel: String = "") {
+                            onReadQuietly: () -> Unit = {}, quietAvailable: Boolean = false, membershipLabel: String = "",
+                            onDelete: (() -> Unit)? = null) {
     var menu by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    if (confirmDelete) DeleteArticleDialog(row.title, { confirmDelete = false }) { confirmDelete = false; onDelete?.invoke() }
     val ready = row.importState == "ready"
     val swipeState = rememberSwipeToDismissBoxState(
         positionalThreshold = { rowWidth -> rowWidth * 0.55f },
@@ -995,6 +1022,7 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                 Text(row.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(4.dp))
                 Text(row.sourceName ?: row.sourceType.uppercase(), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (row.sourceType == "newsletter") Text(newsletterArrival(row.importedAt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (row.importState != "ready") {
                     Spacer(Modifier.height(6.dp))
                     Text(row.warning ?: when (row.importState) { "failed" -> if (row.sourceType == "url") "Import failed · tap to retry" else "Import failed · share the document again to retry"; else -> "Preparing text…" }, style = MaterialTheme.typography.bodySmall, color = if (row.importState == "failed") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
@@ -1023,6 +1051,7 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                             DropdownMenuItem(text = { Text("Move down") }, onClick = { menu = false; onMoveDown() })
                         }
                         DropdownMenuItem(text = { Text("Add to playlist…") }, onClick = { menu = false; onSelectPlaylist() })
+                        if (onDelete != null) DropdownMenuItem(text = { Text("Delete article", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; confirmDelete = true })
                     }
                 }
             }
@@ -1985,9 +2014,11 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
     val effectiveFont = if (!localOverride && sharedDefaults != null) sharedFont else readerFont
     val effectiveScale = if (!localOverride && sharedDefaults != null) (sharedDefaults!!.size / 16f) else readerTextScale
     LaunchedEffect(item.id, followNarration, cursorConflict) {
-        androidx.compose.runtime.snapshotFlow { readingListState.firstVisibleItemIndex }
-            .distinctUntilChanged().drop(1).debounce(800).collect { index ->
-                if (!followNarration && cursorConflict == null && index in offsets.indices) vm.saveReadingCursor(item, offsets[index])
+        androidx.compose.runtime.snapshotFlow { Triple(readingListState.firstVisibleItemIndex, readingListState.firstVisibleItemScrollOffset, readingListState.canScrollForward) }
+            .distinctUntilChanged().drop(1).debounce(800).collect { (index, _, canScrollForward) ->
+                if (!followNarration && cursorConflict == null && index in offsets.indices) {
+                    vm.saveReadingCursor(item, offsets[index], if (canScrollForward) offsets[index] else item.normalizedText.length)
+                }
             }
     }
     var positionDraft by remember(item.id) { mutableFloatStateOf(0f) }
@@ -2012,6 +2043,7 @@ private fun ReaderScreen(item: ReadingItemEntity, vm: LibraryViewModel, onClose:
     val remainingEstimate = (durationAtSpeed - elapsedEstimate).coerceAtLeast(0)
     Column(modifier.fillMaxSize().padding(horizontal = 21.dp)) {
         if (playback != null && playback?.itemId != item.id) Text("Playing: ${playback?.title}. Listen here starts this article.", style = MaterialTheme.typography.bodySmall)
+        if (item.sourceType == "newsletter") Text(newsletterArrival(item.importedAt), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         TextButton(onClick = { if (quiet) vm.startNow(item.id) else vm.readQuietly(item.id) }) { Text(if (quiet) "Listen here" else "Read quietly") }
         ReaderItemTools(item, vm, offsets.getOrElse(readingListState.firstVisibleItemIndex) { 0 }, playback?.sentenceIndex?.let { offsets.getOrElse(it) { 0 } }, { offset ->
             followNarration = false; readerScope.launch { readingListState.scrollToItem(offsets.indexOfLast { it <= offset }.coerceAtLeast(0)) }
@@ -2177,8 +2209,9 @@ private fun String?.isMp3ExportProgress(): Boolean = this?.startsWith("Creating 
 
 @Composable
 private fun Modifier.frostedGlass(shape: RoundedCornerShape = RoundedCornerShape(18.dp)): Modifier =
-    shadow(8.dp, shape, clip = false)
-        .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = .12f), shape)
+    shadow(6.dp, shape, clip = false)
+        .background(Brush.linearGradient(listOf(Color.White.copy(alpha = .14f), Color.White.copy(alpha = .025f))), shape)
+        .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = .30f), Color.White.copy(alpha = .06f))), shape)
 
 @Composable
 internal fun frostedCardColors() = CardDefaults.cardColors(
@@ -2187,8 +2220,7 @@ internal fun frostedCardColors() = CardDefaults.cardColors(
 )
 
 @Composable
-private fun frostedSurfaceColor(): Color = Color.White.copy(alpha = .18f)
-    .compositeOver(MaterialTheme.colorScheme.surface.copy(alpha = .48f))
+private fun frostedSurfaceColor(): Color = MaterialTheme.colorScheme.surface.copy(alpha = .32f)
 
 @Composable
 private fun menuSurfaceColor(): Color = MaterialTheme.colorScheme.surfaceContainerHigh

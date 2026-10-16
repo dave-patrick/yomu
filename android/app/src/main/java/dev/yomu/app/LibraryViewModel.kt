@@ -313,11 +313,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             state.edit().remove("resume_conflict:$key").commit()
         }
     }
-    fun saveReadingCursor(item: ReadingItemEntity, offset: Int) {
+    fun saveReadingCursor(item: ReadingItemEntity, offset: Int, archiveOffset: Int = offset) {
         viewModelScope.launch(Dispatchers.IO) {
             if (repository.dao.getItem(item.id)?.normalizedText != item.normalizedText) return@launch
             repository.dao.upsertReadingCursor(dev.yomu.app.data.ReadingCursorEntity(item.id,
                 dev.yomu.app.data.ReadingAnchor.create(item.normalizedText, offset), System.currentTimeMillis(), "Phone"))
+            repository.autoArchive(item.id, archiveOffset, app.getSharedPreferences("library_preferences", 0).getBoolean("auto_archive_98", false))
         }
     }
     fun shareReaderDefaults(font: String, size: Int, spacing: Double) {

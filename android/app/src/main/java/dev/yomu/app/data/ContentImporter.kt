@@ -128,9 +128,9 @@ class ContentImporter(context: Context, private val dao: LibraryDao) {
                 safeName.endsWith(".doc", ignoreCase = true) || mimeType == DOC -> extractLegacyDoc(stored, readFootnotes)
                 safeName.endsWith(".txt", ignoreCase = true) || mimeType?.startsWith("text/") == true -> stored.readText()
                 else -> error("This file type is not supported yet.")
-            }.trim()
+            }.let(::clean)
             require(text.isNotBlank()) { "No readable text was found in this document." }
-            dao.finishExtraction(id, clean(text), estimateSeconds(clean(text)), System.currentTimeMillis())
+            dao.finishExtraction(id, text, estimateSeconds(text), System.currentTimeMillis())
         } catch (error: Exception) {
             val needsPassword = error is SecurityException && saved.sourceType == "pdf"
             if (error is kotlinx.coroutines.CancellationException) throw error
@@ -254,8 +254,7 @@ class ContentImporter(context: Context, private val dao: LibraryDao) {
         }.joinToString("\n") }
     }
 
-    private fun clean(text: String): String = text.replace('\u0000', ' ').replace(Regex("[\\t ]+"), " ")
-        .replace(Regex(" *\\n *"), "\n").replace(Regex("\\n{3,}"), "\n\n").trim()
+    private fun clean(text: String): String = ReadingTextCleaner.clean(text)
 
     private fun readArticleHtml(body: ResponseBody): String {
         require(body.contentLength() < 0 || body.contentLength() <= MAX_ARTICLE_HTML_BYTES) {

@@ -416,7 +416,7 @@ class YomuPlaybackService : MediaLibraryService() {
             scope.launch { withSpeechCpuAwake {
                 withContext(Dispatchers.IO) {
                     dao.upsertProgress(dev.yomu.app.data.ReadingProgressEntity(itemId = id, sentenceIndex = sentences.size, characterOffset = 0, completed = true, lastListenedAt = System.currentTimeMillis()))
-                    repository.completeItem(id)
+                    repository.completeItem(id, getSharedPreferences("library_preferences", MODE_PRIVATE).getBoolean("auto_archive_98", false))
                 }
                 getSharedPreferences("yomu_playback", MODE_PRIVATE).edit().remove("item_id").remove("sentence").apply()
                 if (stopAtEnd) { stopAtEnd = false; itemId = null; return@withSpeechCpuAwake }
@@ -525,6 +525,10 @@ class YomuPlaybackService : MediaLibraryService() {
     private fun saveCheckpoint() {
         getSharedPreferences("yomu_playback", MODE_PRIVATE).edit()
             .putString("item_id", itemId).putInt("sentence", sentenceIndex).apply()
+        val id = itemId ?: return
+        val offset = characterOffset(sentenceIndex)
+        val enabled = getSharedPreferences("library_preferences", MODE_PRIVATE).getBoolean("auto_archive_98", false)
+        if (enabled) scope.launch(Dispatchers.IO) { repository.autoArchive(id, offset, true) }
     }
 
     private fun persistPlayNowResumePoint() {
