@@ -53,6 +53,9 @@ class ReadableHTML(HTMLParser):
 
 
 def clean_text(text):
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    text = re.sub(r'\((?:[a-z][a-z0-9+.-]*://|www\.)[^\s()]+(?:(?:[ \t]*\n)+[ \t]*[^\s()]+)*[ \t]*\)',
+                  ' ', text, flags=re.I)
     text = re.sub(r'\[([^]\n]+)]\([^\s)]+\)', r'\1', text)
     text = re.sub(r'\b(?:[a-z][a-z0-9+.-]*://|www\.)[^\s<>"\[\]{}()]+',
                   lambda match: re.search(r'[.,!?;:]*$', match[0])[0], text, flags=re.I)

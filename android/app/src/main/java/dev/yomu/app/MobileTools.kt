@@ -87,6 +87,7 @@ internal fun MobileHealthTools(vm: LibraryViewModel) {
     var permanentId by remember { mutableStateOf<String?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
     var storage by remember { mutableStateOf("Measuring storage…") }
+    val modelDirectory = remember { dev.yomu.app.speech.KokoroModelInstaller(context).modelDirectory }
     val speech = context.getSharedPreferences("speech_preferences", 0)
     val content = context.getSharedPreferences("content_preferences", 0)
     val library = context.getSharedPreferences("library_preferences", 0)
@@ -98,7 +99,7 @@ internal fun MobileHealthTools(vm: LibraryViewModel) {
         if (expanded) storage = withContext(Dispatchers.IO) {
             fun size(file: File) = file.walkTopDown().filter { it.isFile }.sumOf { it.length() }
             fun mb(bytes: Long) = "%.1f MB".format(bytes / (1024.0 * 1024))
-            "Originals: ${mb(size(File(context.filesDir, "library/originals")))} · Cache: ${mb(size(context.cacheDir))} · Offline models: ${mb(size(File(context.filesDir, "kokoro")))}"
+            "Originals: ${mb(size(File(context.filesDir, "library/originals")))} · Cache: ${mb(size(context.cacheDir))} · Offline models: ${mb(size(modelDirectory))}"
         }
     }
     SettingsSectionHeader("Library health & recovery", "${items.size} saved items · ${deleted.size} deleted · ${if (ready) "offline voice ready" else "offline voice needed"}", expanded) { expanded = !expanded }

@@ -529,6 +529,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
             YomuBrandSplash()
         } else Scaffold(
             containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.background(Brush.linearGradient(listOf(
                 MaterialTheme.colorScheme.primary.copy(alpha = .16f).compositeOver(MaterialTheme.colorScheme.background),
                 MaterialTheme.colorScheme.background,

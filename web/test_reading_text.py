@@ -4,6 +4,14 @@ from newsletters import clean_text, extract
 
 
 class ReadingTextTests(unittest.TestCase):
+    def test_long_newsletter_tracking_url_and_wrapped_variant(self):
+        token = 'NDEKvrcAp36_oNtoPadwALD92hsUMpM' * 30
+        expected = 'Maria G\n\nThe article begins here.'
+        self.assertEqual(expected, clean_text('Maria G (https://link.mail.beehiiv.com/ss/c/u001.' + token + ')\n\nThe article begins here.'))
+        self.assertEqual(expected, clean_text('Maria G (https://link.mail.beehiiv.com/ss/c/u001.\n\nNDEKvrcAp36_oNtoPadwALD92hsUMpM\nVhONPx5PZv603_qnn4BpGj4lZvVyicKekX)\n\nThe article begins here.'))
+
+    def test_url_does_not_consume_following_prose(self):
+        self.assertEqual('Visit.\n\nKeep this paragraph.', clean_text('Visit https://example.test/path.\n\nKeep this paragraph.'))
     def test_links_symbols_and_unicode(self):
         self.assertEqual("Read this and café 日本語.\n\nDon't lose 42!", clean_text(
             "Read [this](https://example.test/a) and café 日本語.\n\nDon't ★ 😀 lose 42!"))
