@@ -338,6 +338,45 @@ def create_router(service):
             content['text'] = readable_preview(content, row['payload'])
             return content
 
+    @router.post('/api/newsletters/deliveries/bulk-route')
+    async def bulk_route(request: Request):
+        try:
+            body = json.loads(await bounded_body(request))
+            ids, playlist_id = body['deliveryIds'], body['playlistId']
+            assert isinstance(ids, list) and 1 <= len(ids) <= 100
+            assert all(isinstance(ident, str) and ident for ident in ids)
+            assert len(set(ids)) == len(ids) and isinstance(playlist_id, str)
+        except (ValueError, KeyError, TypeError, AssertionError):
+            raise HTTPException(400, 'Select between 1 and 100 issues and a destination.')
+        with service.lock, service.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if playlist_id:
+                service.playlist(db, playlist_id)
+            item_ids = []
+            for ident in ids:
+                row = db.execute('SELECT * FROM newsletter_deliveries WHERE id=?', (ident,)).fetchone()
+                if not row or row['state'] not in ('needs_routing', 'paused', 'possible_duplicate', 'imported'):
+                    raise HTTPException(409, 'An issue changed. Refresh the inbox and select again.')
+                if row['state'] == 'imported':
+                    item_id = row['item_id']
+                    if not db.execute("SELECT 1 FROM records WHERE kind='reading_items' AND id=? AND deleted=0", (item_id,)).fetchone():
+                        raise HTTPException(409, 'A saved issue was deleted. Refresh the inbox.')
+                    if playlist_id:
+                        key = playlist_id + ':' + item_id
+                        if not db.execute("SELECT 1 FROM records WHERE kind='playlist_memberships' AND id=? AND deleted=0", (key,)).fetchone():
+                            orders = [json.loads(r[0]).get('sortOrder', 0) for r in db.execute("SELECT payload FROM records WHERE kind='playlist_memberships' AND deleted=0") if json.loads(r[0]).get('playlistId') == playlist_id]
+                            service.write(db, 'playlist_memberships', key, dict(playlistId=playlist_id, itemId=item_id,
+                                sortOrder=max(orders, default=-1) + 1, addedAt=int(time.time() * 1000)))
+                else:
+                    if not row['preview']:
+                        raise HTTPException(409, 'A preview expired. Refresh the inbox.')
+                    try:
+                        item_id = service.import_issue(db, row, json.loads(row['preview']), playlist_id)
+                    except ValueError:
+                        raise HTTPException(409, 'An issue has no readable text. Preview it before assigning.')
+                item_ids.append(item_id)
+            return dict(count=len(item_ids), itemIds=item_ids)
+
     @router.post('/api/newsletters/deliveries/{ident}/route')
     async def route(ident: str, request: Request):
         try:

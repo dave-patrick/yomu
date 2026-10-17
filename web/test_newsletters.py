@@ -41,6 +41,46 @@ class NewsletterTests(unittest.TestCase):
         with backend.connect() as db:
             return dict(db.execute('SELECT * FROM newsletter_deliveries WHERE id=?', (ident,)).fetchone())
 
+    def test_bulk_assignment_reuses_saved_issues_and_is_idempotent(self):
+        first, second = self.accept(), self.accept()
+        saved = self.route(first, rule=False).json()['itemId']
+        request = dict(deliveryIds=[first, second], playlistId=self.playlist_id)
+        response = self.client.post('/api/newsletters/deliveries/bulk-route', json=request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['count'], 2)
+        self.assertEqual(response.json()['itemIds'][0], saved)
+        with backend.connect() as db:
+            before = list(db.execute("SELECT * FROM records WHERE kind IN ('reading_items','playlist_memberships') ORDER BY kind,id"))
+        again = self.client.post('/api/newsletters/deliveries/bulk-route', json=request)
+        self.assertEqual(again.json(), response.json())
+        with backend.connect() as db:
+            after = list(db.execute("SELECT * FROM records WHERE kind IN ('reading_items','playlist_memberships') ORDER BY kind,id"))
+        self.assertEqual([tuple(r) for r in before], [tuple(r) for r in after])
+
+    def test_bulk_assignment_rolls_back_when_any_issue_changed(self):
+        ident = self.accept()
+        response = self.client.post('/api/newsletters/deliveries/bulk-route', json=dict(deliveryIds=[ident, 'missing'], playlistId=self.playlist_id))
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(self.record(ident)['state'], 'needs_routing')
+        self.assertIsNone(self.record(ident)['item_id'])
+
+    def test_bulk_assignment_validates_selection_and_deleted_destination(self):
+        ident = self.accept()
+        for ids in [[], [ident, ident], [None], ['x'] * 101]:
+            self.assertEqual(self.client.post('/api/newsletters/deliveries/bulk-route', json=dict(deliveryIds=ids, playlistId=self.playlist_id)).status_code, 400)
+        self.assertEqual(self.client.post('/api/newsletters/deliveries/bulk-route', json=dict(deliveryIds=[ident], playlistId='removed')).status_code, 409)
+        self.assertEqual(self.record(ident)['state'], 'needs_routing')
+
+    def test_bulk_assignment_does_not_restore_deleted_saved_issue(self):
+        ident = self.accept()
+        item_id = self.route(ident, rule=False).json()['itemId']
+        with backend.connect() as db:
+            db.execute("UPDATE records SET deleted=1 WHERE kind='reading_items' AND id=?", (item_id,))
+        response = self.client.post('/api/newsletters/deliveries/bulk-route', json=dict(deliveryIds=[ident], playlistId=self.playlist_id))
+        self.assertEqual(response.status_code, 409)
+        with backend.connect() as db:
+            self.assertEqual(db.execute("SELECT deleted FROM records WHERE kind='reading_items' AND id=?", (item_id,)).fetchone()[0], 1)
+
     def test_save_without_playlist_and_reject_empty_rule(self):
         ident = self.accept()
         url = '/api/newsletters/deliveries/' + ident + '/route'

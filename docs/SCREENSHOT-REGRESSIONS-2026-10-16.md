@@ -20,3 +20,5 @@ Backend: 40 tests passed. Android unit tests and APK assembly pass. Installation
 - Failed import rows now offer Open link. Article Open source uses the same floating review panel, with webpage history on Back, an external browser action, and explicit Close. The panel does not retry/cancel imports or change library/playback state. Only HTTP(S) sources are loaded; WebView file/content access is disabled and the view is destroyed when closed.
 
 - Failed/cancelled imports now show Remove in Settings and reader tools, using the existing confirmation and recoverable deletion. Active imports retain a separate Stop import action; failed rows no longer offer the ineffective repeated Cancel action.
+
+- Inbox supports Select issues, Select all, Clear and Assign selected with an existing-playlist picker or To read only. Ready saved deliveries can also be selected under Show all deliveries. Atomic bulk routing preserves saved article identities and memberships on retry, rolls back changed/expired selections, and never restores deleted items. Validation: 49 backend tests and Android unit tests/build pass.
