@@ -1,7 +1,5 @@
 package dev.yomu.app
 
-import android.content.Intent
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
@@ -39,7 +37,7 @@ internal fun ReaderItemTools(item: ReadingItemEntity, vm: LibraryViewModel, offs
     val prefs = context.getSharedPreferences("sync_state", 0)
     TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Hide article tools" else "Source, tags & bookmarks (${annotations.size})") }
     if (expanded) Column(Modifier.fillMaxWidth().heightIn(max = 280.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item.sourceUrl?.takeIf { it.startsWith("https://") || it.startsWith("http://") }?.let { url -> TextButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }) { Text("Open source") } }
+        SourceLinkReviewButton(item.sourceUrl, "Open source")
         if (item.sourceType == "newsletter") Text("Email body saved for reading.", style = MaterialTheme.typography.bodySmall)
         if (item.sourceType != "url" && item.sourceType != "newsletter") {
             val available = item.originalFilePath?.let { File(it).isFile } == true
@@ -116,7 +114,11 @@ internal fun MobileHealthTools(vm: LibraryViewModel) {
         items.filter { it.importState != "ready" }.forEach { item ->
             Text(item.title, style = MaterialTheme.typography.titleSmall)
             Text(item.warning ?: item.importState, style = MaterialTheme.typography.bodySmall)
-            Row { TextButton(onClick = { vm.retryImport(item.id) }) { Text("Retry") }; TextButton(onClick = { vm.cancelImport(item.id) }) { Text("Cancel") } }
+            Row(Modifier.horizontalScroll(rememberScrollState())) {
+                SourceLinkReviewButton(item.sourceUrl)
+                TextButton(onClick = { vm.retryImport(item.id) }) { Text("Retry") }
+                TextButton(onClick = { vm.cancelImport(item.id) }) { Text("Cancel") }
+            }
         }
         Row(verticalAlignment = Alignment.CenterVertically) { Text("Wi-Fi only for background transfers", Modifier.weight(1f)); Switch(wifi, { wifi = it; content.edit().putBoolean("wifi_only", it).apply(); dev.yomu.app.sync.SyncWork.schedule(context) }) }
         Text("Manual Sync now and original downloads remain explicit requests.", style = MaterialTheme.typography.bodySmall)

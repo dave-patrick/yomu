@@ -16,3 +16,5 @@ Backend: 40 tests passed. Android unit tests and APK assembly pass. Installation
 
 - Email transport line wraps now stay within paragraphs; HTML blocks retain separate paragraphs. Versioned previews avoid repeated legacy repairs. Older cached previews re-extract retained source when available, otherwise join only clear lowercase continuations of long unfinished prose. Tests cover preview and save paths.
 - Light surfaces use a solid dark wordmark tint in the toolbar and About. Android tests/build pass; 45 backend tests pass.
+
+- Failed import rows now offer Open link. Article Open source uses the same floating review panel, with webpage history on Back, an external browser action, and explicit Close. The panel does not retry/cancel imports or change library/playback state. Only HTTP(S) sources are loaded; WebView file/content access is disabled and the view is destroyed when closed.
