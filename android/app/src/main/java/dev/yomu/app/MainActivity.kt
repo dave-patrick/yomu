@@ -364,6 +364,13 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
     var callRecoveryEnabled by rememberSaveable { mutableStateOf(speechPrefs.getBoolean("call_resume_enabled", callPermissionGranted)) }
     var themeMode by rememberSaveable { mutableStateOf(prefs.getString("theme_mode", null) ?: if (prefs.getBoolean("dark", true)) "dark" else "light") }
     val dark = themeMode == "dark" || (themeMode == "system" && isSystemInDarkTheme())
+    androidx.compose.runtime.SideEffect {
+        (context as? android.app.Activity)?.let { activity ->
+            val bars = androidx.core.view.WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+            bars.isAppearanceLightStatusBars = !dark
+            bars.isAppearanceLightNavigationBars = !dark
+        }
+    }
     var accentIndex by rememberSaveable { mutableStateOf(prefs.getInt("accent", 0).coerceIn(accentOptions.indices)) }
     var customHex by rememberSaveable { mutableStateOf(prefs.getString("customHex", "") ?: "") }
     var hexDraft by rememberSaveable { mutableStateOf(customHex) }
@@ -466,18 +473,20 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
         var pdfPasswordPending by remember { mutableStateOf<ReadingListRow?>(null) }
         var pdfPassword by rememberSaveable { mutableStateOf("") }
         var selectedPlaylist by remember { mutableStateOf<PlaylistEntity?>(null) }
-        BackHandler(enabled = showInbox || reading != null || selectedPlaylist != null || showAbout || showSettings || navigationHistory.isNotEmpty()) {
+        fun navigateBack() {
             when {
                 reading != null -> vm.closeReader()
-                selectedPlaylist != null -> selectedPlaylist = null
                 showAbout -> { showAbout = false; showSettings = true }
                 showSettings -> showSettings = false
+                selectedPlaylist != null -> selectedPlaylist = null
                 navigationHistory.isNotEmpty() -> {
                     destination = navigationHistory.last()
                     navigationHistory = navigationHistory.dropLast(1)
                 }
+                showInbox -> destination = Destination.TO_READ
             }
         }
+        BackHandler(enabled = showInbox || reading != null || selectedPlaylist != null || showAbout || showSettings || navigationHistory.isNotEmpty()) { navigateBack() }
         val snackbar = remember { SnackbarHostState() }
         val scope = rememberCoroutineScope()
         val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -554,10 +563,11 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                                 Image(painter = painterResource(R.drawable.yomu_icon), contentDescription = "Yomu book and headphones logo",
                                     modifier = Modifier.size(90.dp), contentScale = ContentScale.Fit)
                                 Image(painter = painterResource(R.drawable.yomu_wordmark), contentDescription = "Yomu wordmark",
-                                    modifier = Modifier.width(190.dp).height(64.dp), contentScale = ContentScale.Fit)
+                                    modifier = Modifier.width(190.dp).height(64.dp), contentScale = ContentScale.Fit,
+                                    colorFilter = if (dark) null else androidx.compose.ui.graphics.ColorFilter.tint(MaterialTheme.colorScheme.onSurface, androidx.compose.ui.graphics.BlendMode.Modulate))
                             }
                             if (reading != null || showSettings || showAbout || selectedPlaylist != null || destination != Destination.TO_READ) {
-                                Text(if (showInbox) "Inbox" else if (reading != null) reading!!.title else if (showAbout) "About" else if (showSettings) "Settings" else selectedPlaylist?.name ?: destination.title,
+                                Text(if (reading != null) reading!!.title else if (showAbout) "About" else if (showSettings) "Settings" else selectedPlaylist?.name ?: destination.title,
                                     modifier = if (reading != null) Modifier.fillMaxWidth().basicMarquee(iterations = Int.MAX_VALUE) else Modifier,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     style = if (reading != null) MaterialTheme.typography.titleLarge else MaterialTheme.typography.labelSmall,
@@ -568,7 +578,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                     },
                     navigationIcon = {
                         if (showInbox || reading != null || selectedPlaylist != null || showSettings || showAbout) IconButton(onClick = {
-                            when { reading != null -> vm.closeReader(); showInbox -> { destination = navigationHistory.lastOrNull() ?: Destination.TO_READ; navigationHistory = navigationHistory.dropLast(1) }; selectedPlaylist != null -> selectedPlaylist = null; showAbout -> { showAbout = false; showSettings = true }; else -> showSettings = false }
+                            navigateBack()
                         }) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
                     },
                     actions = {

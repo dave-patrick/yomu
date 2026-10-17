@@ -9,3 +9,6 @@
 - Settings section headers now use a single translucent Surface with no outer shadow and explicit transparent text backgrounds. The voice summary wraps all selected-provider details instead of truncating after four rendered lines.
 
 Backend: 40 tests passed. Android unit tests and APK assembly pass. Installation and device checks are recorded in the chat. Render deployment still requires the pending workspace confirmation.
+
+- Settings opened from Inbox now has the correct title and shares one back-navigation handler with system Back. Light mode requests dark system-bar icons and modulates the toolbar wordmark for readable contrast.
+- Validation: 41 backend tests and 43 Android unit tests pass. Preview prevention fix deployed on Render; native dark/light header captures confirm transparent backgrounds and untruncated voice details.
