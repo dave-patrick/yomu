@@ -85,6 +85,23 @@ class NewsletterTests(unittest.TestCase):
             item = json.loads(db.execute("SELECT payload FROM records WHERE kind='reading_items' AND id=?", (response.json()['itemId'],)).fetchone()[0])
         self.assertEqual(item['normalizedText'], 'Read this café.')
 
+    def test_cached_inbox_preview_removes_substack_links_without_mutating_storage(self):
+        ident = self.accept()
+        raw = 'What Wendell Berry Taught Me About Being a Teacher [\n\nhttps://substack.com/redirect/d4a68ad8?j=eyJ1IjoiDV6ZXgifQ.abcdef\n\n]\n\n—Liz Prather in Your High School Creative Writing Teacher [\n\nhttps://substack.com/redirect/a09f1b01?j=anotherTrackingToken\n\n]\n\nIn the fall of 1987, I took a writing class. ★'
+        with backend.connect() as db:
+            content = json.loads(self.record(ident)['preview'])
+            content['text'] = raw
+            db.execute('UPDATE newsletter_deliveries SET preview=? WHERE id=?', (json.dumps(content), ident))
+        response = self.client.get('/api/newsletters/deliveries/' + ident)
+        self.assertEqual(response.status_code, 200)
+        text = response.json()['text']
+        self.assertIn('What Wendell Berry Taught Me About Being a Teacher', text)
+        self.assertIn('—Liz Prather in Your High School Creative Writing Teacher', text)
+        self.assertIn('In the fall of 1987, I took a writing class.', text)
+        for noise in ['https://', 'substack.com', '[', ']', 'TrackingToken', '★']:
+            self.assertNotIn(noise, text)
+        self.assertEqual(json.loads(self.record(ident)['preview'])['text'], raw)
+
     def test_preview_and_rule_then_automatic_ready_item(self):
         ident = self.accept()
         preview = self.client.get('/api/newsletters/deliveries/' + ident).json()

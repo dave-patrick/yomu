@@ -92,7 +92,8 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
                         } }) { Text("Save issue") }
                         TextButton(enabled = !busy, onClick = { preview = null }) { Text("Close preview") }
                     }
-                    Text(content.optString("text"), style = MaterialTheme.typography.bodyMedium)
+                    val readableText = remember(content) { dev.yomu.app.data.ReadingTextCleaner.clean(content.optString("text")) }
+                    Text(readableText, style = MaterialTheme.typography.bodyMedium)
                     HorizontalDivider()
                 }
             }

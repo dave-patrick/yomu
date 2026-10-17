@@ -309,7 +309,11 @@ def create_router(service):
             row = db.execute('SELECT preview FROM newsletter_deliveries WHERE id=?', (ident,)).fetchone()
             if not row or not row['preview']:
                 raise HTTPException(404, 'Preview unavailable. It may have expired or failed to import.')
-            return json.loads(row['preview'])
+            content = json.loads(row['preview'])
+            # Previously prepared previews can outlive the extraction release.
+            # Normalize the response without rewriting the stored private body.
+            content['text'] = clean_text(content.get('text', ''))
+            return content
 
     @router.post('/api/newsletters/deliveries/{ident}/route')
     async def route(ident: str, request: Request):

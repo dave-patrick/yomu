@@ -1465,7 +1465,7 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                 }
             }
             }
-            item { SettingsSectionHeader("Voices", voicesSectionSummary, voicesExpanded, summaryMaxLines = 4) { voicesExpanded = !voicesExpanded } }
+            item { SettingsSectionHeader("Voices", voicesSectionSummary, voicesExpanded, summaryMaxLines = Int.MAX_VALUE) { voicesExpanded = !voicesExpanded } }
             if (voicesExpanded) {
             item { SettingsGroupHeading("Speech mode") }
             item {
@@ -1866,14 +1866,15 @@ private fun AboutScreen(modifier: Modifier = Modifier) {
 @Composable
 internal fun SettingsSectionHeader(title: String, summary: String, expanded: Boolean, summaryMaxLines: Int = 2, onClick: () -> Unit) {
     val shape = RoundedCornerShape(18.dp)
-    Card(onClick = onClick, modifier = Modifier.shadow(8.dp, shape).border(
-        1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = .52f), shape,
-    ), shape = shape, colors = frostedCardColors()) {
+    Surface(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = shape,
+        color = frostedSurfaceColor(), contentColor = MaterialTheme.colorScheme.onSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .28f)),
+        tonalElevation = 0.dp, shadowElevation = 0.dp) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text(title, style = MaterialTheme.typography.titleMedium.copy(background = Color.Transparent), color = MaterialTheme.colorScheme.primary)
                 Text(summary, maxLines = summaryMaxLines, overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    style = MaterialTheme.typography.bodySmall.copy(background = Color.Transparent), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                 contentDescription = if (expanded) "Collapse $title" else "Expand $title", tint = MaterialTheme.colorScheme.primary)
