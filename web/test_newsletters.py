@@ -64,6 +64,39 @@ class NewsletterTests(unittest.TestCase):
         self.assertEqual(self.record(ident)['state'], 'needs_routing')
         self.assertIsNone(self.record(ident)['item_id'])
 
+    def test_bulk_automation_deduplicates_rules_and_routes_future_issues(self):
+        first, second = self.accept(), self.accept()
+        body = dict(deliveryIds=[first, second], playlistId=self.playlist_id, createRules=True)
+        response = self.client.post('/api/newsletters/deliveries/bulk-route', json=body)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['rulesCreated'], 1)
+        again = self.client.post('/api/newsletters/deliveries/bulk-route', json=body)
+        self.assertEqual(again.status_code, 200)
+        self.assertEqual(again.json()['itemIds'], response.json()['itemIds'])
+        self.assertEqual(again.json()['rulesCreated'], 0)
+        time.sleep(.003)
+        future = self.accept()
+        self.assertEqual(self.record(future)['state'], 'imported')
+        rules = self.client.get('/api/newsletters').json()['rules']
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0]['playlist_id'], self.playlist_id)
+
+    def test_bulk_automation_requires_playlist_and_never_overwrites_conflicting_rule(self):
+        first = self.accept()
+        self.assertEqual(self.route(first).status_code, 200)
+        second = self.accept()
+        # Pause the existing automation so a new issue awaits review.
+        rule = self.client.get('/api/newsletters').json()['rules'][0]
+        self.client.put('/api/newsletters/rules/' + rule['id'], json=dict(playlistId=self.playlist_id, enabled=False))
+        ident = self.accept()
+        self.assertEqual(self.record(ident)['state'], 'paused')
+        for playlist, status in [('', 400), (self.playlist_id, 409)]:
+            response = self.client.post('/api/newsletters/deliveries/bulk-route', json=dict(deliveryIds=[ident], playlistId=playlist, createRules=True))
+            self.assertEqual(response.status_code, status)
+        self.assertEqual(self.record(ident)['state'], 'paused')
+        self.assertIsNone(self.record(ident)['item_id'])
+        self.assertEqual(self.client.get('/api/newsletters').json()['rules'][0]['enabled'], 0)
+
     def test_bulk_assignment_validates_selection_and_deleted_destination(self):
         ident = self.accept()
         for ids in [[], [ident, ident], [None], ['x'] * 101]:

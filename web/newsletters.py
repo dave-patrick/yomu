@@ -346,6 +346,8 @@ def create_router(service):
             assert isinstance(ids, list) and 1 <= len(ids) <= 100
             assert all(isinstance(ident, str) and ident for ident in ids)
             assert len(set(ids)) == len(ids) and isinstance(playlist_id, str)
+            assert type(body.get('createRules', False)) is bool
+            assert playlist_id or not body.get('createRules')
         except (ValueError, KeyError, TypeError, AssertionError):
             raise HTTPException(400, 'Select between 1 and 100 issues and a destination.')
         with service.lock, service.connect() as db:
@@ -375,7 +377,26 @@ def create_router(service):
                     except ValueError:
                         raise HTTPException(409, 'An issue has no readable text. Preview it before assigning.')
                 item_ids.append(item_id)
-            return dict(count=len(item_ids), itemIds=item_ids)
+            rules_created = 0
+            if body.get('createRules'):
+                for ident in ids:
+                    row = db.execute('SELECT preview FROM newsletter_deliveries WHERE id=?', (ident,)).fetchone()
+                    if not row['preview']:
+                        raise HTTPException(409, 'Newsletter details expired. Choose a more recent issue for automation.')
+                    content = json.loads(row['preview'])
+                    sender, list_id = content.get('sender', ''), content.get('listId', '')
+                    if not sender or '@' not in sender:
+                        raise HTTPException(409, 'Review the newsletter sender before creating automation.')
+                    existing = db.execute('SELECT * FROM newsletter_rules WHERE list_id=? AND (list_id!=? OR sender=?)',
+                                          (list_id, '', sender)).fetchall()
+                    if existing:
+                        if len(existing) != 1 or existing[0]['playlist_id'] != playlist_id or not existing[0]['enabled']:
+                            raise HTTPException(409, 'An automation already exists. Edit it under Inbox automations.')
+                        continue
+                    db.execute('INSERT INTO newsletter_rules VALUES (?,?,?,?,?,?)',
+                        (str(uuid.uuid4()), sender, list_id, playlist_id, 1, int(time.time() * 1000)))
+                    rules_created += 1
+            return dict(count=len(item_ids), itemIds=item_ids, rulesCreated=rules_created)
 
     @router.post('/api/newsletters/deliveries/{ident}/route')
     async def route(ident: str, request: Request):
