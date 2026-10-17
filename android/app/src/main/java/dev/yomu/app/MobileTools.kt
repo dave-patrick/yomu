@@ -64,7 +64,7 @@ internal fun ReaderItemTools(item: ReadingItemEntity, vm: LibraryViewModel, offs
         TextButton(enabled = annotations.isNotEmpty(), onClick = { export.launch("Yomu-notes.md") }) { Text("Export notes & bookmarks") }
         if (item.importState != "ready") {
             Text(item.warning ?: "${item.importState}…", style = MaterialTheme.typography.bodySmall)
-            Row { TextButton(onClick = { vm.retryImport(item.id) }) { Text("Retry") }; TextButton(onClick = { vm.cancelImport(item.id) }) { Text("Cancel import") } }
+            ImportRecoveryActions(item, vm)
         }
     }
     if (showNote) AlertDialog(onDismissRequest = { showNote = false }, title = { Text("Add $kind here") },
@@ -114,11 +114,7 @@ internal fun MobileHealthTools(vm: LibraryViewModel) {
         items.filter { it.importState != "ready" }.forEach { item ->
             Text(item.title, style = MaterialTheme.typography.titleSmall)
             Text(item.warning ?: item.importState, style = MaterialTheme.typography.bodySmall)
-            Row(Modifier.horizontalScroll(rememberScrollState())) {
-                SourceLinkReviewButton(item.sourceUrl)
-                TextButton(onClick = { vm.retryImport(item.id) }) { Text("Retry") }
-                TextButton(onClick = { vm.cancelImport(item.id) }) { Text("Cancel") }
-            }
+            key(item.id) { ImportRecoveryActions(item, vm, showSource = true) }
         }
         Row(verticalAlignment = Alignment.CenterVertically) { Text("Wi-Fi only for background transfers", Modifier.weight(1f)); Switch(wifi, { wifi = it; content.edit().putBoolean("wifi_only", it).apply(); dev.yomu.app.sync.SyncWork.schedule(context) }) }
         Text("Manual Sync now and original downloads remain explicit requests.", style = MaterialTheme.typography.bodySmall)
@@ -137,4 +133,21 @@ internal fun MobileHealthTools(vm: LibraryViewModel) {
     }
     if (permanentId != null) AlertDialog(onDismissRequest = { permanentId = null }, title = { Text("Remove permanently?") }, text = { Text("This removes the recovery copy and original document from this phone. It cannot be undone.") },
         confirmButton = { TextButton(onClick = { vm.permanentlyDelete(permanentId!!); permanentId = null }) { Text("Remove permanently") } }, dismissButton = { TextButton(onClick = { permanentId = null }) { Text("Cancel") } })
+}
+
+@Composable
+private fun ImportRecoveryActions(item: ReadingItemEntity, vm: LibraryViewModel, showSource: Boolean = false) {
+    var confirmRemove by rememberSaveable(item.id) { mutableStateOf(false) }
+    Row(Modifier.horizontalScroll(rememberScrollState())) {
+        if (showSource) SourceLinkReviewButton(item.sourceUrl)
+        TextButton(onClick = { vm.retryImport(item.id) }) { Text("Retry") }
+        if (item.importState != "failed") {
+            TextButton(onClick = { vm.cancelImport(item.id) }) { Text("Stop import") }
+        }
+        TextButton(onClick = { confirmRemove = true }) { Text("Remove") }
+    }
+    if (confirmRemove) DeleteArticleDialog(item.title, { confirmRemove = false }) {
+        confirmRemove = false
+        vm.deleteReadingItem(item.id)
+    }
 }

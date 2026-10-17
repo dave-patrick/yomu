@@ -18,3 +18,5 @@ Backend: 40 tests passed. Android unit tests and APK assembly pass. Installation
 - Light surfaces use a solid dark wordmark tint in the toolbar and About. Android tests/build pass; 45 backend tests pass.
 
 - Failed import rows now offer Open link. Article Open source uses the same floating review panel, with webpage history on Back, an external browser action, and explicit Close. The panel does not retry/cancel imports or change library/playback state. Only HTTP(S) sources are loaded; WebView file/content access is disabled and the view is destroyed when closed.
+
+- Failed/cancelled imports now show Remove in Settings and reader tools, using the existing confirmation and recoverable deletion. Active imports retain a separate Stop import action; failed rows no longer offer the ineffective repeated Cancel action.
