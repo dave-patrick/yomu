@@ -128,7 +128,7 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val id = delivery.getString("id")
                 if (selecting && id in selectable) Row(
-                    Modifier.fillMaxWidth().toggleable(value = id in selected, enabled = !busy, role = Role.Checkbox,
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = id in selected, enabled = !busy, role = Role.Checkbox,
                         onValueChange = { checked -> selected = if (checked) selected + id else selected - id }),
                     verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = id in selected, onCheckedChange = null)
@@ -155,12 +155,12 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
         }
     }
     if (bulkChoose) AlertDialog(onDismissRequest = { if (!busy) bulkChoose = false },
-        title = { Text("Assign ${selected.size} issues") },
+        title = { Text("Assign ${selected.size} " + if (selected.size == 1) "issue" else "issues") },
         text = {
             val playlists = inbox?.optJSONArray("playlists")
             LazyColumn(Modifier.heightIn(max = 340.dp)) {
                 item { Text("Save new issues to To read and add selected issues to your chosen playlist. Existing saved articles are reused.") }
-                item { Row(Modifier.fillMaxWidth().toggleable(bulkPlaylist.isEmpty(), role = Role.RadioButton,
+                item { Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(bulkPlaylist.isEmpty(), enabled = !busy, role = Role.RadioButton,
                     onValueChange = { bulkPlaylist = "" }), verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(selected = bulkPlaylist.isEmpty(), onClick = null)
                     Text("To read only — no playlist")
@@ -168,7 +168,7 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
                 for (i in 0 until (playlists?.length() ?: 0)) {
                     val playlist = playlists!!.getJSONObject(i)
                     item(key = playlist.getString("id")) {
-                        Row(Modifier.fillMaxWidth().toggleable(bulkPlaylist == playlist.getString("id"), role = Role.RadioButton,
+                        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(bulkPlaylist == playlist.getString("id"), enabled = !busy, role = Role.RadioButton,
                             onValueChange = { bulkPlaylist = playlist.getString("id") }), verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = bulkPlaylist == playlist.getString("id"), onClick = null)
                             Text(playlist.getString("name"))
