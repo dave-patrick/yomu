@@ -935,6 +935,7 @@ private fun LibraryList(
                         archiveActionEnabled = archiveActionEnabled, readStateActionEnabled = readStateActionEnabled,
                         onMenuPlayNow = { onMenuPlay(row) }, longPressLabel = longPressLabel,
                         onReadQuietly = { vm?.readQuietly(row.id) }, quietAvailable = vm != null,
+                        onAddToUpNext = if (vm != null) ({ vm.enqueue(row.id) }) else null,
                         membershipLabel = memberships.filter { it.itemId == row.id }.mapNotNull { membership -> playlists.find { it.id == membership.playlistId }?.name }.joinToString(", "),
                         onDelete = if (vm != null) ({ vm.deleteReadingItem(row.id) }) else null)
                 }
@@ -963,7 +964,7 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                             onMarkStateChange: () -> Unit, archiveActionEnabled: Boolean, readStateActionEnabled: Boolean,
                             onMenuPlayNow: () -> Unit = onPlayNow, longPressLabel: String = "Play now",
                             onReadQuietly: () -> Unit = {}, quietAvailable: Boolean = false, membershipLabel: String = "",
-                            onDelete: (() -> Unit)? = null) {
+                            onDelete: (() -> Unit)? = null, onAddToUpNext: (() -> Unit)? = null) {
     var menu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     if (confirmDelete) DeleteArticleDialog(row.title, { confirmDelete = false }) { confirmDelete = false; onDelete?.invoke() }
@@ -1056,6 +1057,7 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                         modifier = Modifier.frostedGlass(RoundedCornerShape(20.dp))) {
                         if (quietAvailable) DropdownMenuItem(text = { Text("Read quietly") }, enabled = ready, onClick = { menu = false; onReadQuietly() })
                         DropdownMenuItem(text = { Text("Play now") }, enabled = ready, onClick = { menu = false; onMenuPlayNow() })
+                        if (onAddToUpNext != null) DropdownMenuItem(text = { Text("Add to Up next") }, enabled = ready, onClick = { menu = false; onAddToUpNext() })
                         if (readStateActionEnabled) DropdownMenuItem(text = { Text(if (row.completed) "Mark as unread" else "Mark as read") }, onClick = { menu = false; onMarkStateChange() })
                         if (archiveActionEnabled) DropdownMenuItem(text = { Text("Move to Archive") }, onClick = { menu = false; onSwipeAction("Archive") })
                         if (queueMode) DropdownMenuItem(text = { Text(removeLabel) }, onClick = { menu = false; onRemoveQueue() })

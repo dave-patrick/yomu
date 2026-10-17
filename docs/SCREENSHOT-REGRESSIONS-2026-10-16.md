@@ -28,3 +28,5 @@ Backend: 40 tests passed. Android unit tests and APK assembly pass. Installation
 - Holding an eligible Inbox issue enters selection mode and selects that issue. The selection count, Select all, Clear, Done selecting and Assign selected controls now live outside the scrolling list in a fixed top toolbar. Back exits selection mode; assignment and automation continue through the existing picker.
 
 - Inbox destination pickers now merge the live phone playlist list with server choices, preferring local names and avoiding duplicate IDs. A phone-only destination syncs before assignment or rule changes and must be present in a fresh server response before proceeding. Download-only settings are respected; failures retain the selection and appear inside the bulk picker. Regression tests cover local creation/rename, website-only choices, sync ordering, policy and missing destinations.
+
+- Article overflow menus now include Add to Up next beside Play now, using the existing enqueue action. It is enabled for ready articles and adds to the queue without starting playback.
