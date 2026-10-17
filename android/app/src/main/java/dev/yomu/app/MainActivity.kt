@@ -751,7 +751,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                         onMarkStateChange = { if (it.completed) vm.markItemUnread(it.id) else vm.markItemRead(it.id) },
                         onSwipeAction = { row, action -> if (action == "Delete") deleteItemPending = row else handleLibrarySwipe(action, row, vm, enqueueAndResetQueue) { playlistItemPending = row } })
                     Destination.PLAYLISTS -> PlaylistList(playlists, vm = vm, onCreate = { showNewPlaylist = true }, onSelect = { selectedPlaylist = it; vm.openPlaylist(it.id) }, modifier = Modifier.padding(padding))
-                    Destination.INBOX -> NewsletterInbox(Modifier.padding(padding))
+                    Destination.INBOX -> NewsletterInbox(playlists, Modifier.padding(padding))
                     Destination.HISTORY -> HistoryList(history, onRemove = vm::deleteHistory, onMarkUnread = vm::markItemUnread, onClear = { showClearHistory = true }, modifier = Modifier.padding(padding))
                     Destination.ARCHIVE -> ArchiveScreen(archived, onPlay = { vm.startNow(it.id) }, onRestore = vm::restoreArchivedItem,
                         onDelete = { deleteItemPending = it },

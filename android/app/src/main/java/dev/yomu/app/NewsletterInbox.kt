@@ -17,6 +17,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.yomu.app.sync.LibrarySync
 import dev.yomu.app.sync.SyncVault
+import dev.yomu.app.sync.SyncOptions
+import dev.yomu.app.data.PlaylistEntity
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -26,7 +28,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 @Composable
-fun NewsletterInbox(modifier: Modifier = Modifier) {
+fun NewsletterInbox(localPlaylists: List<PlaylistEntity>, modifier: Modifier = Modifier) {
     val context = LocalContext.current.applicationContext
     val vault = remember { SyncVault(context) }
     val client = remember { OkHttpClient.Builder().callTimeout(45, TimeUnit.SECONDS).followRedirects(false).build() }
@@ -45,6 +47,7 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
     var bulkPlaylist by remember { mutableStateOf("") }
     var bulkAutomate by remember { mutableStateOf(false) }
     var automate by remember { mutableStateOf(false) }
+    val playlistChoices = remember(localPlaylists, inbox) { newsletterPlaylistChoices(localPlaylists, inbox?.optJSONArray("playlists")) }
     val listState = rememberLazyListState()
     val deliveries = inbox?.optJSONArray("deliveries")
     val rows = (0 until (deliveries?.length() ?: 0)).map { deliveries!!.getJSONObject(it) }.filter {
@@ -62,6 +65,15 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
             check(response.isSuccessful) { data.optString("detail", "Could not load inbox. Try Refresh.") }
             data
         }
+    }
+    suspend fun ensureDestination(id: String) {
+        fun serverIds(): Set<String> {
+            val playlists = inbox?.optJSONArray("playlists")
+            return (0 until (playlists?.length() ?: 0)).map { playlists!!.getJSONObject(it).getString("id") }.toSet()
+        }
+        ensureNewsletterPlaylist(id, serverIds(), SyncOptions(context).direction().uploads,
+            sync = { LibrarySync(context).sync() },
+            refresh = { inbox = request(); serverIds() })
     }
     fun action(work: suspend () -> Unit) {
         if (busy) return
@@ -104,8 +116,9 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
                 selecting = true; selected = emptySet(); preview = null
             }) { Text("Select issues") }
             Text(if (selecting) "Possible duplicates are included only when selected. Preparing and failed issues cannot be assigned yet." else "Hold an issue to start selecting.", style = MaterialTheme.typography.bodySmall)
-            InboxAutomations(inbox?.optJSONArray("rules"), inbox?.optJSONArray("playlists"), busy) { id, target, enabled ->
+            InboxAutomations(inbox?.optJSONArray("rules"), playlistChoices, busy) { id, target, enabled ->
                 action {
+                    ensureDestination(target)
                     request("/rules/$id", "PUT", JSONObject().put("playlistId", target).put("enabled", enabled))
                     message = "Automation updated."
                 }
@@ -118,7 +131,7 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
                     Text(content.optString("title"), style = MaterialTheme.typography.titleLarge)
                     Text(content.optString("sender"), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Save this issue once, or also automate future issues from this newsletter.", style = MaterialTheme.typography.bodySmall)
-                    val playlists = inbox?.optJSONArray("playlists")
+                    val playlists = playlistChoices
                     val name = (0 until (playlists?.length() ?: 0)).map { playlists!!.getJSONObject(it) }.find { it.optString("id") == playlistId }?.optString("name") ?: "No playlist — To read only"
                     Box {
                         OutlinedButton(enabled = !busy, onClick = { choose = true }) { Text(name) }
@@ -138,6 +151,7 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
                     if (automate) Text("Matches " + content.optString("listId").ifBlank { content.optString("sender") } + ". Check forwarded sender details before saving.", style = MaterialTheme.typography.bodySmall)
                     Row {
                         Button(enabled = !busy, onClick = { action {
+                            ensureDestination(playlistId)
                             request("/deliveries/$selectedId/route", "POST", JSONObject().put("playlistId", playlistId).put("createRule", automate))
                             preview = null; message = if (automate) "Issue saved and automation created." else "Saved to To read."
                             LibrarySync(context).sync()
@@ -194,8 +208,9 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
     if (bulkChoose) AlertDialog(onDismissRequest = { if (!busy) bulkChoose = false },
         title = { Text("Assign ${selected.size} " + if (selected.size == 1) "issue" else "issues") },
         text = {
-            val playlists = inbox?.optJSONArray("playlists")
+            val playlists = playlistChoices
             LazyColumn(Modifier.heightIn(max = 340.dp)) {
+                item { message?.let { Text(it, color = MaterialTheme.colorScheme.error) } }
                 item { Text("Save new issues to To read and add selected issues to your chosen playlist. Existing saved articles are reused.") }
                 item {
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(bulkAutomate, enabled = !busy && bulkPlaylist.isNotEmpty(), role = Role.Checkbox,
@@ -223,7 +238,11 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
             }
         },
         confirmButton = { TextButton(enabled = !busy && selected.isNotEmpty(), onClick = { action {
-            val result = request("/deliveries/bulk-route", "POST", JSONObject().put("deliveryIds", org.json.JSONArray(selected.toList())).put("playlistId", bulkPlaylist).put("createRules", bulkAutomate))
+            val ids = selected.toList()
+            val destination = bulkPlaylist
+            val createRules = bulkAutomate
+            ensureDestination(destination)
+            val result = request("/deliveries/bulk-route", "POST", JSONObject().put("deliveryIds", org.json.JSONArray(ids)).put("playlistId", destination).put("createRules", createRules))
             bulkChoose = false; selected = emptySet(); selecting = false; preview = null
             message = "${result.getInt("count")} issues assigned." + if (bulkAutomate) " Future issues will be assigned automatically." else ""
             try { LibrarySync(context).sync() } catch (error: CancellationException) { throw error }
