@@ -394,16 +394,17 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
     var swipeLeftAction by rememberSaveable { mutableStateOf(libraryPrefs.getString("swipe_left_action", "Add to playlist") ?: "Add to playlist") }
     var readFootnotes by rememberSaveable { mutableStateOf(contentPrefs.getBoolean("read_footnotes", true)) }
     val accent = remember(accentIndex, customHex) { parseHex(customHex) ?: accentOptions[accentIndex].second }
+    val actionAccent = remember(accent, dark) { readableAccent(accent, dark) }
     val scheme = if (dark) darkColorScheme(
-        primary = accent, onPrimary = Color(0xFF07101D), background = Color(0xFF090B10),
+        primary = actionAccent, onPrimary = textOnFill(actionAccent), background = Color(0xFF090B10),
         surface = Color(0xFF11151C), surfaceVariant = Color(0xFF1C222C), onSurface = Color(0xFFF3F5F8),
-        onSurfaceVariant = Color(0xFFB8C0CC), secondary = accent.copy(alpha = .82f),
-        secondaryContainer = accent.copy(alpha = .22f).compositeOver(Color(0xFF11151C)), onSecondaryContainer = accent,
+        onSurfaceVariant = Color(0xFFB8C0CC), secondary = actionAccent,
+        secondaryContainer = accent.copy(alpha = .22f).compositeOver(Color(0xFF11151C)), onSecondaryContainer = actionAccent,
         outline = Color(0xFF39414D),
     ) else lightColorScheme(
-        primary = accent, onPrimary = Color.White, background = Color(0xFFF6F8FB),
+        primary = actionAccent, onPrimary = textOnFill(actionAccent), background = Color(0xFFF6F8FB),
         surface = Color(0xFFFFFFFF), surfaceVariant = Color(0xFFE8EDF5), onSurface = Color(0xFF161B24),
-        onSurfaceVariant = Color(0xFF505B69), secondary = accent,
+        onSurfaceVariant = Color(0xFF505B69), secondary = actionAccent,
         secondaryContainer = accent.copy(alpha = .16f).compositeOver(Color(0xFFF6F8FB)), onSecondaryContainer = Color(0xFF07101D),
         outline = Color(0xFFCDD3DD),
     )
@@ -1379,7 +1380,7 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                             label = { Text(label, maxLines = 1) },
                             leadingIcon = if (themeMode == value) ({ Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }) else null,
                             colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = .20f),
+                            selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
                                 selectedLabelColor = MaterialTheme.colorScheme.primary,
                                 selectedLeadingIconColor = MaterialTheme.colorScheme.primary,
                             ),
@@ -1445,7 +1446,7 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                                 .combinedClickable(onClick = { setAccent(index) }),
                             contentAlignment = Alignment.Center,
                         ) {
-                            if (selected) Icon(Icons.Default.Check, contentDescription = "Selected ${entry.first} accent", tint = Color.White, modifier = Modifier.size(18.dp))
+                            if (selected) Icon(Icons.Default.Check, contentDescription = "Selected ${entry.first} accent", tint = textOnFill(entry.second), modifier = Modifier.size(18.dp))
                         }
                     }
                 }
