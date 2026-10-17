@@ -13,3 +13,6 @@ Backend: 40 tests passed. Android unit tests and APK assembly pass. Installation
 - Settings opened from Inbox now has the correct title and shares one back-navigation handler with system Back. Light mode requests dark system-bar icons and modulates the toolbar wordmark for readable contrast.
 - Validation: 41 backend tests and 43 Android unit tests pass. Preview prevention fix deployed on Render; native dark/light header captures confirm transparent backgrounds and untruncated voice details.
 - All Settings disclosure headers use a 10dp corner radius for a rounded-rectangle outline.
+
+- Email transport line wraps now stay within paragraphs; HTML blocks retain separate paragraphs. Versioned previews avoid repeated legacy repairs. Older cached previews re-extract retained source when available, otherwise join only clear lowercase continuations of long unfinished prose. Tests cover preview and save paths.
+- Light surfaces use a solid dark wordmark tint in the toolbar and About. Android tests/build pass; 45 backend tests pass.

@@ -138,6 +138,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
@@ -564,7 +565,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                                     modifier = Modifier.size(90.dp), contentScale = ContentScale.Fit)
                                 Image(painter = painterResource(R.drawable.yomu_wordmark), contentDescription = "Yomu wordmark",
                                     modifier = Modifier.width(190.dp).height(64.dp), contentScale = ContentScale.Fit,
-                                    colorFilter = if (dark) null else androidx.compose.ui.graphics.ColorFilter.tint(MaterialTheme.colorScheme.onSurface, androidx.compose.ui.graphics.BlendMode.Modulate))
+                                    colorFilter = if (MaterialTheme.colorScheme.surface.luminance() < .5f) null else ColorFilter.tint(Color(0xFF151922)))
                             }
                             if (reading != null || showSettings || showAbout || selectedPlaylist != null || destination != Destination.TO_READ) {
                                 Text(if (reading != null) reading!!.title else if (showAbout) "About" else if (showSettings) "Settings" else selectedPlaylist?.name ?: destination.title,
@@ -1853,6 +1854,7 @@ private fun AboutScreen(modifier: Modifier = Modifier) {
                     contentDescription = "Yomu",
                     modifier = Modifier.width(220.dp).height(74.dp),
                     contentScale = ContentScale.Fit,
+                    colorFilter = if (MaterialTheme.colorScheme.surface.luminance() < .5f) null else ColorFilter.tint(Color(0xFF151922)),
                 )
                 Text("Your reading, ready to listen.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 Text("Published by " + context.getString(R.string.publisher_name), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

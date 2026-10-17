@@ -91,7 +91,7 @@ class NewsletterTests(unittest.TestCase):
         with backend.connect() as db:
             content = json.loads(self.record(ident)['preview'])
             content['text'] = raw
-            db.execute('UPDATE newsletter_deliveries SET preview=? WHERE id=?', (json.dumps(content), ident))
+            db.execute('UPDATE newsletter_deliveries SET preview=?,payload=NULL WHERE id=?', (json.dumps(content), ident))
         response = self.client.get('/api/newsletters/deliveries/' + ident)
         self.assertEqual(response.status_code, 200)
         text = response.json()['text']
@@ -101,6 +101,23 @@ class NewsletterTests(unittest.TestCase):
         for noise in ['https://', 'substack.com', '[', ']', 'TrackingToken', '★']:
             self.assertNotIn(noise, text)
         self.assertEqual(json.loads(self.record(ident)['preview'])['text'], raw)
+
+    def test_cached_paragraphs_rebuild_from_source_for_preview_and_save(self):
+        payload = self.payload()
+        payload.update(html='', text='He wore khakis,\nbrown lace-up shoes.\n\nHis hair was gray.')
+        ident = self.accept(payload)
+        with backend.connect() as db:
+            content = json.loads(self.record(ident)['preview'])
+            content['text'] = 'He wore khakis,\n\nbrown lace-up shoes.\n\nHis hair was gray.'
+            db.execute('UPDATE newsletter_deliveries SET preview=?,payload=? WHERE id=?', (json.dumps(content), json.dumps(payload), ident))
+        expected = 'He wore khakis, brown lace-up shoes.\n\nHis hair was gray.'
+        self.assertEqual(self.client.get('/api/newsletters/deliveries/' + ident).json()['text'], expected)
+        self.assertEqual(json.loads(self.record(ident)['preview'])['text'], content['text'])
+        response = self.route(ident, rule=False)
+        self.assertEqual(response.status_code, 200)
+        with backend.connect() as db:
+            item = json.loads(db.execute("SELECT payload FROM records WHERE kind='reading_items' AND id=?", (response.json()['itemId'],)).fetchone()[0])
+        self.assertEqual(item['normalizedText'], expected)
 
     def test_preview_and_rule_then_automatic_ready_item(self):
         ident = self.accept()

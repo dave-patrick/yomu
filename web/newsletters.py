@@ -31,7 +31,9 @@ class ReadableHTML(HTMLParser):
         if self.blocked or tag in ('script', 'style', 'form', 'head', 'iframe', 'object', 'svg'):
             self.blocked.append(tag)
             return
-        if tag in ('p', 'div', 'br', 'li', 'tr', 'h1', 'h2', 'h3', 'blockquote'):
+        if tag in ('p', 'div', 'li', 'tr', 'h1', 'h2', 'h3', 'blockquote'):
+            self.parts.append('\n\n')
+        elif tag == 'br':
             self.parts.append('\n')
         if tag == 'a':
             href = dict(attrs).get('href', '')
@@ -45,7 +47,7 @@ class ReadableHTML(HTMLParser):
         if tag == 'a' and self.links:
             href = self.links.pop()
         if tag in ('p', 'div', 'li', 'tr', 'h1', 'h2', 'h3', 'blockquote'):
-            self.parts.append('\n')
+            self.parts.append('\n\n')
 
     def handle_data(self, text):
         if not self.blocked:
@@ -65,7 +67,9 @@ def clean_text(text):
     text = re.sub(r'\(\s*\)', ' ', text)
     text = '\n'.join(line if any(unicodedata.category(c)[0] in 'LN' for c in line) else '' for line in text.split('\n'))
     text = re.sub(r' +([.,!?;:])', r'\1', text)
-    return '\n\n'.join(line for line in (re.sub(r'[ \t\r]+', ' ', line).strip() for line in text.split('\n')) if line)
+    # Email transport wraps prose at a fixed column. Only blank lines delimit
+    # paragraphs; HTML block boundaries are emitted as blank lines above.
+    return '\n\n'.join(' '.join(block.split()) for block in re.split(r'\n\s*\n', text) if block.strip())
 
 
 def extract(payload):
@@ -101,7 +105,26 @@ def extract(payload):
     list_id = payload.get('listId', '').strip().lower()[:300]
     match = re.search(r'<([^>]+)>', list_id)
     return dict(title=title, sender=sender, listId=match[1] if match else list_id, text=text,
-                messageId=message_id, forwarded=forwarded)
+                messageId=message_id, forwarded=forwarded, textVersion=2)
+
+
+def readable_preview(content, payload=None):
+    if payload:
+        return extract(json.loads(payload))['text']
+    text = clean_text(content.get('text', ''))
+    if content.get('textVersion', 0) >= 2:
+        return text
+    # Older releases discarded the source and promoted email soft wraps to
+    # blank lines. Repair only clear, long, unfinished prose continuations.
+    paragraphs = text.split('\n\n')
+    repaired = []
+    for paragraph in paragraphs:
+        if (repaired and len(repaired[-1]) >= 40 and paragraph[:1].islower()
+                and repaired[-1][-1:] not in '.!?…:;”"'):
+            repaired[-1] += ' ' + paragraph
+        else:
+            repaired.append(paragraph)
+    return '\n\n'.join(repaired)
 
 
 def from_eml(raw):
@@ -197,7 +220,7 @@ class NewsletterService:
             raise HTTPException(409, 'This delivery has already been imported.')
         now, item_id = int(time.time() * 1000), str(uuid.uuid4())
         # Re-clean at save time, including previews prepared by older releases.
-        text = clean_text(preview['text'])
+        text = readable_preview(preview, delivery['payload'])
         if not text:
             raise ValueError('No readable email body. Attachments are not imported yet.')
         item = dict(id=item_id, title=preview['title'], sourceType='newsletter', sourceName=preview['sender'],
@@ -306,13 +329,13 @@ def create_router(service):
     @router.get('/api/newsletters/deliveries/{ident}')
     def preview(ident: str):
         with service.lock, service.connect() as db:
-            row = db.execute('SELECT preview FROM newsletter_deliveries WHERE id=?', (ident,)).fetchone()
+            row = db.execute('SELECT preview,payload FROM newsletter_deliveries WHERE id=?', (ident,)).fetchone()
             if not row or not row['preview']:
                 raise HTTPException(404, 'Preview unavailable. It may have expired or failed to import.')
             content = json.loads(row['preview'])
             # Previously prepared previews can outlive the extraction release.
             # Normalize the response without rewriting the stored private body.
-            content['text'] = clean_text(content.get('text', ''))
+            content['text'] = readable_preview(content, row['payload'])
             return content
 
     @router.post('/api/newsletters/deliveries/{ident}/route')
