@@ -22,6 +22,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -850,6 +851,9 @@ private fun LibraryList(
     var selected by remember { mutableStateOf(emptySet<String>()) }
     var confirmBulkDelete by remember { mutableStateOf(false) }
     var bulkPlaylist by remember { mutableStateOf(false) }
+    BackHandler(enabled = selectionMode && !bulkPlaylist && !confirmBulkDelete && !showFilters) {
+        selectionMode = false; selected = emptySet()
+    }
     val corpus = remember(allItems) { allItems.associateBy { it.id } }
     val shownRows = remember(rows, effectiveSortMode, queueMode, query, typeFilter, stateFilter, allItems) {
         sortLibraryRows(rows.filter { row ->
@@ -887,7 +891,8 @@ private fun LibraryList(
     Column(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(collectionLabel ?: if (queueMode) "Your listening order" else "Saved for when you have a moment", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(tapHint ?: if (queueMode) "Tap to play · hold to play now" else "Tap to queue · hold to play", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (vm != null) (tapHint?.substringBefore(" · ") ?: if (queueMode) "Tap to play" else "Tap to queue") + " · hold to select"
+                else tapHint ?: if (queueMode) "Tap to play · hold to play now" else "Tap to queue · hold to play", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val totalMinutes = shownRows.sumOf { it.estimatedSecondsAtOneX } / 60
             if (showDurations && shownRows.isNotEmpty()) Text("${shownRows.size} items  ·  ${formatDuration(totalMinutes * 60)} total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             if (vm != null) {
@@ -925,8 +930,9 @@ private fun LibraryList(
         } else {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, bottom = 18.dp)) {
                 items(shownRows, key = { it.id }) { row ->
-                    if (selectionMode) Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = row.id in selected, onCheckedChange = { checked -> selected = if (checked) selected + row.id else selected - row.id })
+                    if (selectionMode) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = row.id in selected,
+                        role = Role.Checkbox, onValueChange = { checked -> selected = if (checked) selected + row.id else selected - row.id }), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = row.id in selected, onCheckedChange = null)
                         Text(row.title, Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     } else ReadingItemCard(row, queueMode, removeLabel, allowReorder, showDurations, swipeRightAction, swipeLeftAction, itemSpacingDp,
                         onTap = { onTap(row) }, onPlayNow = { onPlayNow(row) }, onRemoveQueue = { onRemoveQueue(row) },
@@ -936,6 +942,7 @@ private fun LibraryList(
                         onMenuPlayNow = { onMenuPlay(row) }, longPressLabel = longPressLabel,
                         onReadQuietly = { vm?.readQuietly(row.id) }, quietAvailable = vm != null,
                         onAddToUpNext = if (vm != null) ({ vm.enqueue(row.id) }) else null,
+                        onLongPress = if (vm != null) ({ selectionMode = true; selected = selected + row.id }) else null,
                         membershipLabel = memberships.filter { it.itemId == row.id }.mapNotNull { membership -> playlists.find { it.id == membership.playlistId }?.name }.joinToString(", "),
                         onDelete = if (vm != null) ({ vm.deleteReadingItem(row.id) }) else null)
                 }
@@ -964,7 +971,7 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
                             onMarkStateChange: () -> Unit, archiveActionEnabled: Boolean, readStateActionEnabled: Boolean,
                             onMenuPlayNow: () -> Unit = onPlayNow, longPressLabel: String = "Play now",
                             onReadQuietly: () -> Unit = {}, quietAvailable: Boolean = false, membershipLabel: String = "",
-                            onDelete: (() -> Unit)? = null, onAddToUpNext: (() -> Unit)? = null) {
+                            onDelete: (() -> Unit)? = null, onAddToUpNext: (() -> Unit)? = null, onLongPress: (() -> Unit)? = null) {
     var menu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     if (confirmDelete) DeleteArticleDialog(row.title, { confirmDelete = false }) { confirmDelete = false; onDelete?.invoke() }
@@ -1020,11 +1027,11 @@ private fun ReadingItemCard(row: ReadingListRow, queueMode: Boolean, removeLabel
     ) {
       Card(
             modifier = Modifier.fillMaxWidth().combinedClickable(
-            enabled = ready || row.importState == "failed",
+            enabled = ready || row.importState == "failed" || onLongPress != null,
             role = Role.Button,
-            onClick = onTap,
-            onLongClick = onPlayNow,
-            onLongClickLabel = longPressLabel,
+            onClick = { if (ready || row.importState == "failed") onTap() },
+            onLongClick = { if (onLongPress != null) onLongPress() else onPlayNow() },
+            onLongClickLabel = if (onLongPress != null) "Select item" else longPressLabel,
         ).frostedGlass(),
         colors = frostedCardColors(),
         shape = RoundedCornerShape(18.dp),

@@ -30,3 +30,5 @@ Backend: 40 tests passed. Android unit tests and APK assembly pass. Installation
 - Inbox destination pickers now merge the live phone playlist list with server choices, preferring local names and avoiding duplicate IDs. A phone-only destination syncs before assignment or rule changes and must be present in a fresh server response before proceeding. Download-only settings are respected; failures retain the selection and appear inside the bulk picker. Regression tests cover local creation/rename, website-only choices, sync ordering, policy and missing destinations.
 
 - Article overflow menus now include Add to Up next beside Play now, using the existing enqueue action. It is enabled for ready articles and adds to the queue without starting playback.
+
+- Holding a main-library article now enters the existing bulk-selection mode and selects that item. Selected rows toggle across their full width, Back exits selection, and the hold hint/accessibility action says Select item. Play now and Add to Up next remain explicit menu actions.
