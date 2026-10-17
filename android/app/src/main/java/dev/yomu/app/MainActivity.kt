@@ -1875,7 +1875,7 @@ private fun AboutScreen(modifier: Modifier = Modifier) {
 
 @Composable
 internal fun SettingsSectionHeader(title: String, summary: String, expanded: Boolean, summaryMaxLines: Int = 2, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(10.dp)
     Surface(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = shape,
         color = frostedSurfaceColor(), contentColor = MaterialTheme.colorScheme.onSurface,
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .28f)),
