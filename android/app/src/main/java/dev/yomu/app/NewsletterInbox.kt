@@ -1,6 +1,10 @@
 package dev.yomu.app
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -70,7 +74,24 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
         }
     }
     LaunchedEffect(Unit) { action {} }
-    LazyColumn(modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    BackHandler(enabled = selecting && !bulkChoose && !busy) { selecting = false; selected = emptySet() }
+    Column(modifier.fillMaxSize()) {
+        if (selecting) Surface(color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${selected.size} selected", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                    TextButton(enabled = !busy, onClick = { selecting = false; selected = emptySet() }) { Text("Done selecting") }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
+                        TextButton(enabled = !busy, onClick = { selected = selectable }) { Text("Select all") }
+                        TextButton(enabled = !busy && selected.isNotEmpty(), onClick = { selected = emptySet() }) { Text("Clear") }
+                    }
+                    Button(enabled = !busy && selected.isNotEmpty(), onClick = { bulkPlaylist = ""; bulkAutomate = false; bulkChoose = true }) { Text("Assign selected…") }
+                }
+            }
+        }
+    LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Text("Incoming newsletters", style = MaterialTheme.typography.headlineSmall)
             Text("Save to To read, choose a playlist, or dismiss an issue.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -79,18 +100,10 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
                 TextButton(enabled = !busy, onClick = { action {} }) { Text(if (busy) "Loading…" else "Refresh") }
                 TextButton(enabled = !busy, onClick = { all = !all }) { Text(if (all) "Show awaiting review" else "Show all deliveries") }
             }
-            TextButton(enabled = !busy && selectable.isNotEmpty(), onClick = {
-                selecting = !selecting; selected = emptySet(); preview = null
-            }) { Text(if (selecting) "Done selecting" else "Select issues") }
-            if (selecting) {
-                Text("${selected.size} selected", style = MaterialTheme.typography.titleMedium)
-                Text("Possible duplicates are included only when selected. Preparing and failed issues cannot be assigned yet.", style = MaterialTheme.typography.bodySmall)
-                Row {
-                    TextButton(enabled = !busy, onClick = { selected = selectable }) { Text("Select all") }
-                    TextButton(enabled = !busy && selected.isNotEmpty(), onClick = { selected = emptySet() }) { Text("Clear") }
-                }
-                Button(enabled = !busy && selected.isNotEmpty(), onClick = { bulkPlaylist = ""; bulkAutomate = false; bulkChoose = true }) { Text("Assign selected…") }
-            }
+            if (!selecting) TextButton(enabled = !busy && selectable.isNotEmpty(), onClick = {
+                selecting = true; selected = emptySet(); preview = null
+            }) { Text("Select issues") }
+            Text(if (selecting) "Possible duplicates are included only when selected. Preparing and failed issues cannot be assigned yet." else "Hold an issue to start selecting.", style = MaterialTheme.typography.bodySmall)
             InboxAutomations(inbox?.optJSONArray("rules"), inbox?.optJSONArray("playlists"), busy) { id, target, enabled ->
                 action {
                     request("/rules/$id", "PUT", JSONObject().put("playlistId", target).put("enabled", enabled))
@@ -139,18 +152,27 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
         }
         if (inbox != null && rows.isEmpty()) item { Text("Your inbox is clear. New newsletters will appear here.") }
         for (delivery in rows) item(key = delivery.getString("id")) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                val id = delivery.getString("id")
+            val id = delivery.getString("id")
+            val state = delivery.optString("state")
+            Column(Modifier.fillMaxWidth().combinedClickable(enabled = !busy && id in selectable,
+                onLongClickLabel = "Select issue",
+                onLongClick = { selecting = true; selected = selected + id; preview = null },
+                onClick = {
+                    if (selecting || state == "imported") {
+                        selecting = true; selected = if (id in selected) selected - id else selected + id; preview = null
+                    } else action {
+                        selectedId = id; playlistId = ""; automate = false
+                        preview = request("/deliveries/$id"); listState.scrollToItem(0)
+                    }
+                }), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (selecting && id in selectable) Row(
-                    Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = id in selected, enabled = !busy, role = Role.Checkbox,
-                        onValueChange = { checked -> selected = if (checked) selected + id else selected - id }),
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = id in selected, onCheckedChange = null)
+                    Checkbox(checked = id in selected, enabled = !busy, onCheckedChange = { checked -> selected = if (checked) selected + id else selected - id })
                     Text(delivery.optString("title"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 } else Text(delivery.optString("title"), style = MaterialTheme.typography.titleMedium)
                 Text(delivery.optString("sender"), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (delivery.optLong("receivedAt") > 0) Text(newsletterArrival(delivery.optLong("receivedAt")), style = MaterialTheme.typography.bodySmall)
-                val state = delivery.optString("state")
                 Text(when (state) { "imported" -> "Saved to library"; "possible_duplicate" -> "Possible duplicate — review before saving"; "needs_routing", "paused" -> "Awaiting review"; "ignored" -> "Dismissed"; "queued" -> "Preparing"; else -> state })
                 if (!selecting && state in listOf("needs_routing", "paused", "possible_duplicate")) Row {
                     TextButton(enabled = !busy, onClick = { action {
@@ -167,6 +189,7 @@ fun NewsletterInbox(modifier: Modifier = Modifier) {
                 HorizontalDivider()
             }
         }
+    }
     }
     if (bulkChoose) AlertDialog(onDismissRequest = { if (!busy) bulkChoose = false },
         title = { Text("Assign ${selected.size} " + if (selected.size == 1) "issue" else "issues") },
