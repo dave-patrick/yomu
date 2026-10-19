@@ -87,7 +87,12 @@ from the library; returning restores the view, search, scroll position, and focu
 item in the same tab. Font, size, spacing, and width are saved for this browser;
 theme uses the existing System/Light/Dark preference. Text is selectable, source
 links are available, and opening or scrolling does not mark an item read or change
-the phone's listening position. Separate reading cursors, offline position retry,
+the phone's listening position. The reader's Actions menu applies the same item
+actions as the library list — mark read or unread, add to or remove from Up next,
+move within Up next, archive or restore, rename, add to or remove from a
+playlist, and delete — and both pages share one definition of each action in
+`static/sync.js`. The end of an article also offers archiving or deleting it
+directly. Separate reading cursors, offline position retry,
 conflict choices, and shared reader defaults are implemented for alpha18 pairing.
 See [Resume delivery](../docs/CROSS-DEVICE-RESUME-2026-10-07.md) for installation
 and device acceptance status. Browser audio remains planned.

@@ -1,6 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const model = YomuLibrary;
+const sync = YomuSync;
 const libraryQuery = new URLSearchParams(location.search);
 let key = localStorage.getItem('yomu-key') || '', snapshot = null, view = libraryQuery.get('view') || 'toRead';
 $('search').value = libraryQuery.get('search') || '';
@@ -17,7 +18,7 @@ const queue = model.createSerialQueue();
 const client = localStorage.getItem('yomu-client') || crypto.randomUUID();
 localStorage.setItem('yomu-client', client);
 const records = kind => model.live(snapshot, kind);
-const lookup = (kind,id) => snapshot?.records.find(r => r.kind === kind && r.id === id)?.data || null;
+const lookup = (kind,id) => sync.lookup(snapshot, kind, id);
 const nowLabel = value => new Date(value).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
 function notice(message, error = false, target = 'notice') {
   $(target).textContent = message;
@@ -49,23 +50,7 @@ function updateControls() {
   $('closeName').disabled = writeDepth > 0;
 }
 async function api(path, options = {}, accessKey = key) {
-  try {
-    const response = await fetch('/api/' + path, {...options,
-      signal: options.signal || AbortSignal.timeout(options.method ? 90000 : 20000),
-      headers: {...options.headers, Authorization:'Bearer ' + accessKey}});
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      const error = Error(response.status === 401 ? 'Access key rejected. Reconnect with your library key.' :
-        typeof body.detail === 'string' ? body.detail : 'Yomu returned HTTP ' + response.status + '. Try again.');
-      error.status = response.status;
-      throw error;
-    }
-    return response.json();
-  } catch (error) {
-    if (error.name === 'TimeoutError') throw Error('Yomu took too long to respond. Try Sync now again.');
-    if (error instanceof TypeError) throw Error('Cannot reach Yomu. Check your connection and try again.');
-    throw error;
-  }
+  return sync.api(path, options, accessKey);
 }
 function acceptSnapshot(result, epoch) {
   if (epoch !== connectionEpoch) throw Error('The browser connection changed. Check the current library before trying again.');
@@ -111,11 +96,10 @@ async function refresh({quiet = false} = {}) {
     }
   });
 }
-const change = (kind,id,data) => ({kind,id,data,base:lookup(kind,id)});
+const change = (kind,id,data) => sync.change(snapshot, kind, id, data);
 async function mutate(changes, message, epoch) {
   if (!snapshot) throw Error('Load your library before making changes.');
-  const result = await api('sync', {method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({client:'web-' + client, instance:snapshot.instance, changes})});
+  const result = await sync.mutate({snapshot, client, changes, accessKey:key});
   acceptSnapshot(result, epoch);
   notice(result.conflicts?.length ? 'Some changes conflicted with another device. The current server value was kept.' : message);
 }
@@ -272,35 +256,25 @@ function fillRow(content, item, dates) {
     more.open = false;
   }), {write:true, unavailable, cls}));
   add(progress?.completed ? 'Mark unread' : 'Mark read', async (fresh,epoch) => {
-    const state = lookup('reading_progress', item.id);
-    const completed = !state?.completed, now = Date.now();
-    const changes = [change('reading_items', item.id, {...fresh, inToRead:!completed, archived:false, updatedAt:now}),
-      change('reading_progress', item.id, {...(state || {itemId:item.id, sentenceIndex:0, characterOffset:0, playbackSpeed:1, lastListenedAt:0}), completed})];
-    if (completed) {
-      if (lookup('up_next', item.id)) changes.push(change('up_next', item.id, null));
-      const id = crypto.randomUUID(); changes.push(change('read_history', id, {id, itemId:item.id, completedAt:now}));
-    } else records('read_history').filter(h => h.itemId === item.id).forEach(h => changes.push(change('read_history', h.id, null)));
-    await mutate(changes, completed ? 'Marked as read.' : 'Returned to To read.', epoch);
+    const action = sync.toggleRead(snapshot, item.id);
+    await mutate(action.changes, action.message, epoch);
   });
   const queued = lookup('up_next', item.id);
   add(queued ? 'Remove from Up next' : 'Add to Up next', async (fresh,epoch) => {
-    const entry = lookup('up_next', item.id);
-    await mutate([change('up_next', item.id, entry ? null : {itemId:item.id, position:Math.max(-1,...records('up_next').map(q => q.position)) + 1, addedAt:Date.now()})],
-      entry ? 'Removed from Up next.' : 'Added to Up next.', epoch);
+    const action = sync.toggleQueue(snapshot, item.id);
+    await mutate(action.changes, action.message, epoch);
   }, !queued && !ready);
   if (view === 'queue') {
     const ordered = records('up_next').sort((a,b) => a.position - b.position), position = ordered.findIndex(q => q.itemId === item.id);
     for (const [label,delta] of [['Move up',-1], ['Move down',1]]) add(label, async (fresh,epoch) => {
-      const entries = records('up_next').sort((a,b) => a.position - b.position), index = entries.findIndex(q => q.itemId === item.id), destination = index + delta;
-      if (index < 0 || destination < 0 || destination >= entries.length) return;
-      [entries[index],entries[destination]] = [entries[destination],entries[index]];
-      await mutate(entries.map((entry,n) => change('up_next', entry.itemId, {...entry, position:n})), 'Up next order updated.', epoch);
+      const moved = sync.moveInQueue(snapshot, item.id, delta);
+      if (!moved) return;
+      await mutate(moved.changes, moved.message, epoch);
     }, position + delta < 0 || position + delta >= ordered.length);
   }
   add(item.archived ? 'Restore to To read' : 'Archive', async (fresh,epoch) => {
-    const entry = lookup('up_next', item.id);
-    await mutate([change('reading_items', item.id, {...fresh, archived:!fresh.archived, inToRead:!!fresh.archived, updatedAt:Date.now()}),
-      ...(entry ? [change('up_next', item.id, null)] : [])], fresh.archived ? 'Restored to To read.' : 'Moved to Archive.', epoch);
+    const action = sync.toggleArchive(snapshot, item.id);
+    await mutate(action.changes, action.message, epoch);
   });
   panel.append(actionButton('Rename', () => {
     more.open = false; openName('rename', item.id);
@@ -313,21 +287,15 @@ function fillRow(content, item, dates) {
   select.dataset.write = ''; select.dataset.unavailable = String(!records('playlists').length);
   destination.append(select); panel.append(destination);
   const addPlaylist = actionButton('Add to playlist', () => runAction(async epoch => {
-    const playlistId = select.value;
-    if (!playlistId) throw Error('Choose a playlist first.');
-    if (!lookup('playlists', playlistId)) throw Error('That playlist was removed. Choose another playlist.');
-    const id = playlistId + ':' + item.id;
-    if (lookup('playlist_memberships', id)) { notice('Already in that playlist.'); more.open = false; return; }
-    currentItem(item.id);
-    await mutate([change('playlist_memberships', id, {playlistId, itemId:item.id,
-      sortOrder:Math.max(-1,...records('playlist_memberships').filter(m => m.playlistId === playlistId).map(m => m.sortOrder)) + 1, addedAt:Date.now()})],
-      'Added to playlist.', epoch);
+    const action = sync.addToPlaylist(snapshot, item.id, select.value);
+    await mutate(action.changes, action.message, epoch);
     more.open = false;
   }), {write:true, unavailable:true, cls:'menu-item'});
   select.onchange = () => { addPlaylist.dataset.unavailable = String(!select.value); updateControls(); };
   panel.append(addPlaylist);
   if (!model.builtInViews.includes(view)) add('Remove from this playlist', async (fresh,epoch) => {
-    await mutate([change('playlist_memberships', view + ':' + item.id, null)], 'Removed from this playlist. The saved item remains in your library.', epoch);
+    const action = sync.removeFromPlaylist(snapshot, item.id, view);
+    await mutate(action.changes, action.message, epoch);
   });
   panel.append(actionButton('Import details', () => {
     const fresh = currentItem(item.id); $('detailsTitle').textContent = fresh.title || 'Import details';
@@ -336,9 +304,8 @@ function fillRow(content, item, dates) {
   }, {cls:'menu-item'}));
   add('Delete saved item', async (fresh,epoch) => {
     if (!confirm('Permanently delete “' + fresh.title + '” from your synced library? This also removes its queue, playlist, progress, and history entries. Archive it instead if you want to keep it.')) return;
-    await mutate([change('reading_items', item.id, null), ...['up_next','reading_progress','playlist_memberships','read_history'].flatMap(kind =>
-      (snapshot.records || []).filter(r => r.kind === kind && r.data?.itemId === item.id).map(r => change(kind, r.id, null))),
-      ...(lookup('reading_cursors',item.id) ? [change('reading_cursors',item.id,null)] : [])], 'Saved item deleted.', epoch);
+    const action = sync.deleteItem(snapshot, item.id);
+    await mutate(action.changes, action.message, epoch);
   }, false, 'menu-item destructive');
   more.append(summary,panel);
   more.addEventListener('toggle', () => {
@@ -370,8 +337,8 @@ $('nameForm').onsubmit = event => {
   if (!name) { notice('Enter a name.', true, 'nameError'); $('nameInput').setAttribute('aria-invalid','true'); return; }
   return runAction(async epoch => {
     if (nameAction.type === 'rename') {
-      const item = currentItem(nameAction.id);
-      await mutate([change('reading_items', item.id, {...item, title:name, updatedAt:Date.now()})], 'Title updated.', epoch);
+      const action = sync.renameItem(snapshot, nameAction.id, name);
+      await mutate(action.changes, action.message, epoch);
     } else {
       const id = crypto.randomUUID();
       await mutate([change('playlists', id, {id, name, createdAt:Date.now(), sortOrder:records('playlists').length})], 'Playlist created.', epoch);

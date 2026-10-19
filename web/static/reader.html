@@ -1,26 +1,34 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="publisher" content="Atomic 22 Industries"><title>Yomu · Reader</title><link rel="icon" href="/icon.png"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/reader.css"><script src="/theme.js"></script><script src="/reader-model.js" defer></script><script src="/reader.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="publisher" content="Atomic 22 Industries"><title>Yomu · Reader</title><link rel="icon" href="/icon.png"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/reader.css"><script src="/theme.js"></script><script src="/reader-model.js" defer></script><script src="/sync.js" defer></script><script src="/reader.js" defer></script></head>
 <body class="reader-page">
 <a class="skip-link" href="#readerArticle">Skip to article</a>
 <div class="reader-toolbar">
   <a id="backLibrary" class="reader-back" href="/"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h13"/></svg>Library</a>
   <a class="reader-brand" href="/" aria-label="Yomu library"><img src="/icon.png" alt="" width="36" height="36"><img src="/wordmark.png" alt="Yomu" width="112"></a>
-  <details id="appearance" class="reader-appearance">
-    <summary>Reading settings</summary>
-    <div class="reader-controls">
-      <h2>Make yourself comfortable</h2>
-      <label for="readerFont">Font</label><select id="readerFont"><option value="serif">Serif · Georgia</option><option value="sans">Sans serif · Segoe UI</option><option value="mono">Monospace · Consolas</option></select>
-      <label for="readerSize">Text size</label><select id="readerSize"><option value="16">16 px</option><option value="18">18 px</option><option value="20">20 px</option><option value="22">22 px</option><option value="24">24 px</option><option value="28">28 px</option><option value="32">32 px</option></select>
-      <label for="readerSpacing">Line spacing</label><select id="readerSpacing"><option value="1.4">Compact</option><option value="1.7">Comfortable</option><option value="2">Spacious</option></select>
-      <label for="readerWidth">Column width</label><select id="readerWidth"><option value="narrow">Narrow</option><option value="comfortable">Comfortable</option><option value="wide">Wide</option></select>
-      <label for="siteTheme">Theme</label><select id="siteTheme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
-      <button id="resetReading" class="secondary">Reset reading settings</button>
-      <label><input id="localReadingOverride" type="checkbox" checked> Override library defaults on this browser</label>
-      <button id="shareReading" class="secondary">Use these as library defaults</button>
-      <p>Font, size, and spacing can follow library defaults. Theme and width stay on this browser.</p>
-    </div>
-  </details>
+  <div class="reader-toolbar-actions">
+    <details id="appearance" class="reader-appearance">
+      <summary>Reading settings</summary>
+      <div class="reader-controls">
+        <h2>Make yourself comfortable</h2>
+        <label for="readerFont">Font</label><select id="readerFont"><option value="serif">Serif · Georgia</option><option value="sans">Sans serif · Segoe UI</option><option value="mono">Monospace · Consolas</option></select>
+        <label for="readerSize">Text size</label><select id="readerSize"><option value="16">16 px</option><option value="18">18 px</option><option value="20">20 px</option><option value="22">22 px</option><option value="24">24 px</option><option value="28">28 px</option><option value="32">32 px</option></select>
+        <label for="readerSpacing">Line spacing</label><select id="readerSpacing"><option value="1.4">Compact</option><option value="1.7">Comfortable</option><option value="2">Spacious</option></select>
+        <label for="readerWidth">Column width</label><select id="readerWidth"><option value="narrow">Narrow</option><option value="comfortable">Comfortable</option><option value="wide">Wide</option></select>
+        <label for="siteTheme">Theme</label><select id="siteTheme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+        <button id="resetReading" class="secondary">Reset reading settings</button>
+        <label><input id="localReadingOverride" type="checkbox" checked> Override library defaults on this browser</label>
+        <button id="shareReading" class="secondary">Use these as library defaults</button>
+        <p>Font, size, and spacing can follow library defaults. Theme and width stay on this browser.</p>
+      </div>
+    </details>
+    <details id="articleActions" class="item-menu reader-actions" hidden>
+      <summary>Actions</summary>
+      <div class="menu-panel" role="group" aria-label="Actions for this article">
+        <p id="actionStatus" class="reader-action-status" role="status" aria-live="polite"></p>
+      </div>
+    </details>
+  </div>
 </div>
 <main class="reader-main">
   <p id="readerNotice" class="reader-notice" role="status">Loading your article…</p>
@@ -36,7 +44,18 @@
   <article id="readerArticle" tabindex="-1" hidden aria-labelledby="readerTitle">
     <header class="article-heading"><h1 id="readerTitle"></h1><div class="article-meta"><span id="readerMeta"></span><a id="readerSource" target="_blank" rel="noopener noreferrer" hidden>Open original</a></div></header>
     <div id="readerText" class="article-text"></div>
-    <footer class="reader-end"><p>End of article</p><a id="endLibrary" href="/">Back to library</a></footer>
+    <footer class="reader-end">
+      <p>End of article</p>
+      <div id="endActions" class="reader-end-actions" hidden>
+        <p id="endActionStatus" class="reader-end-status" role="status" aria-live="polite"></p>
+        <div class="reader-end-buttons">
+          <button id="endArchive" class="secondary">Archive this article</button>
+          <button id="endDelete" class="secondary reader-end-delete">Delete this article</button>
+        </div>
+        <p class="reader-end-hint">Finished reading? Archive keeps the article in your library, out of To read. Delete removes it and its reading history.</p>
+      </div>
+      <a id="endLibrary" href="/">Back to library</a>
+    </footer>
   </article>
 </main>
 <script src="/resume.js" defer></script>
