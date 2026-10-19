@@ -67,6 +67,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -171,6 +172,8 @@ import dev.yomu.app.data.HistoryRow
 import dev.yomu.app.data.PlaylistEntity
 import dev.yomu.app.data.ReadingItemEntity
 import dev.yomu.app.data.ReadingListRow
+import dev.yomu.app.speech.VoicePreviewCache
+import dev.yomu.app.speech.starredVoiceKey
 import kotlinx.coroutines.launch
 import java.text.BreakIterator
 import java.util.Locale
@@ -393,6 +396,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
     }
     var selectedAzureVoice by rememberSaveable { mutableStateOf(speechPrefs.getString("azure_voice", "en-GB-SoniaNeural") ?: "en-GB-SoniaNeural") }
     var selectedElevenLabsVoice by rememberSaveable { mutableStateOf(speechPrefs.getString("elevenlabs_voice", "") ?: "") }
+    var selectedFishAudioVoice by rememberSaveable { mutableStateOf(speechPrefs.getString("fish_audio_voice", "") ?: "") }
     var selectedOfflineVoice by rememberSaveable { mutableStateOf(speechPrefs.getInt("kokoro_voice", 7)) }
     var retryOnlineAfterFailover by rememberSaveable { mutableStateOf(speechPrefs.getBoolean("try_online_after_failover", false)) }
     var onlineProvider by rememberSaveable { mutableStateOf(speechPrefs.getString("online_provider", "azure") ?: "azure") }
@@ -439,7 +443,10 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
         val elevenLabsKeySaved by vm.elevenLabsKeySaved.collectAsStateWithLifecycle()
         val elevenLabsVoices by vm.elevenLabsVoices.collectAsStateWithLifecycle()
         val elevenLabsUsage by vm.elevenLabsUsage.collectAsStateWithLifecycle()
-        val previewPath by vm.previewPath.collectAsStateWithLifecycle()
+        val fishAudioKeySaved by vm.fishAudioKeySaved.collectAsStateWithLifecycle()
+        val fishAudioVoices by vm.fishAudioVoices.collectAsStateWithLifecycle()
+        val starredVoices by vm.starredVoices.collectAsStateWithLifecycle()
+        val preview by vm.preview.collectAsStateWithLifecycle()
         val status by vm.status.collectAsStateWithLifecycle()
         val exportStatus by vm.exportStatus.collectAsStateWithLifecycle()
         val backupStatus by vm.backupStatus.collectAsStateWithLifecycle()
@@ -683,7 +690,7 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                     durationDisplay, { value -> durationDisplay = value; prefs.edit().putString("duration_display", value).apply() },
                     listSpacing, { value -> listSpacing = value; libraryPrefs.edit().putString("list_spacing", value).apply() },
                     offlineVoiceReady, modelInstallProgress, vm::installOfflineVoice,
-                    azureKeySaved, azureRegion, azureVoices, previewPath,
+                    azureKeySaved, azureRegion, azureVoices, preview?.path, preview?.token,
                     vm::saveAzureSettings, vm::loadAzureVoices, vm::auditionAzureVoice, vm::clearAzureSettings,
                     selectedAzureVoice, { voiceId -> selectedAzureVoice = voiceId; speechPrefs.edit().putString("azure_voice", voiceId).apply() },
                     selectedOfflineVoice, { voiceId -> selectedOfflineVoice = voiceId; speechPrefs.edit().putInt("kokoro_voice", voiceId).apply() }, vm::auditionOfflineVoice,
@@ -701,6 +708,10 @@ private fun YomuApp(sharedIntent: Intent?, onShareConsumed: () -> Unit, vm: Libr
                             if (!modelId.isNullOrBlank()) putString("elevenlabs_model", modelId)
                         }
                     },
+                    fishAudioKeySaved, fishAudioVoices, vm::saveFishAudioKey, vm::loadFishAudioCatalog,
+                    vm::clearFishAudioKey, vm::auditionFishAudioVoice,
+                    selectedFishAudioVoice, { voiceId -> selectedFishAudioVoice = voiceId; speechPrefs.edit().putString("fish_audio_voice", voiceId).apply() },
+                    starredVoices, vm::toggleStarred,
                     callRecoveryEnabled, { enabled ->
                         if (enabled && !callPermissionGranted) requestCallPermission.launch(android.Manifest.permission.READ_PHONE_STATE)
                         else {
@@ -1232,7 +1243,7 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                            durationDisplay: String, setDurationDisplay: (String) -> Unit,
                            listSpacing: String, setListSpacing: (String) -> Unit,
                            offlineVoiceReady: Boolean, modelProgress: dev.yomu.app.speech.ModelInstallProgress?, installOffline: () -> Unit,
-                           azureKeySaved: Boolean, savedAzureRegion: String, azureVoices: List<dev.yomu.app.speech.SpeechVoice>, previewPath: String?,
+                           azureKeySaved: Boolean, savedAzureRegion: String, azureVoices: List<dev.yomu.app.speech.SpeechVoice>, previewPath: String?, previewToken: Long?,
                            saveAzure: (String, String) -> Unit, loadAzureVoices: () -> Unit, auditionVoice: (String) -> Unit, clearAzure: () -> Unit,
                            selectedAzureVoice: String, selectAzureVoice: (String) -> Unit,
                            selectedOfflineVoice: Int, selectOfflineVoice: (Int) -> Unit, auditionOfflineVoice: (Int) -> Unit,
@@ -1247,6 +1258,11 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                            auditionElevenLabsVoice: (String) -> Unit, selectedElevenLabsVoice: String,
                            selectedElevenLabsModel: String?,
                            selectElevenLabsVoice: (String) -> Unit,
+                           fishAudioKeySaved: Boolean, fishAudioVoices: List<dev.yomu.app.speech.SpeechVoice>,
+                           saveFishAudioKey: (String) -> Unit, loadFishAudioCatalog: () -> Unit,
+                           clearFishAudioKey: () -> Unit, auditionFishAudioVoice: (String) -> Unit,
+                           selectedFishAudioVoice: String, selectFishAudioVoice: (String) -> Unit,
+                           starredVoices: Set<String>, toggleStarred: (String, String) -> Unit,
                            callRecoveryEnabled: Boolean, setCallRecoveryEnabled: (Boolean) -> Unit,
                            exportFolderDisplayName: String?, chooseExportFolder: () -> Unit,
                            createBackup: () -> Unit, chooseBackupToRestore: () -> Unit,
@@ -1267,6 +1283,7 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
     var showDiagnostics by rememberSaveable { mutableStateOf(false) }
     var azureKey by rememberSaveable { mutableStateOf("") }
     var elevenLabsKey by rememberSaveable { mutableStateOf("") }
+    var fishAudioKey by rememberSaveable { mutableStateOf("") }
     var region by rememberSaveable { mutableStateOf(savedAzureRegion) }
     var voiceFilter by rememberSaveable { mutableStateOf("") }
     var azureLocaleFilter by rememberSaveable { mutableStateOf("English · all accents") }
@@ -1280,11 +1297,19 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
     var elevenAgeFilter by rememberSaveable { mutableStateOf("Any age") }
     var elevenTypeFilter by rememberSaveable { mutableStateOf("Any voice type") }
     var elevenStyleFilter by rememberSaveable { mutableStateOf("Any style") }
+    var fishAudioVoiceFilter by rememberSaveable { mutableStateOf("") }
+    var fishAudioVoicesExpanded by rememberSaveable { mutableStateOf(false) }
+    var azureStarredOnly by rememberSaveable { mutableStateOf(false) }
+    var elevenLabsStarredOnly by rememberSaveable { mutableStateOf(false) }
+    var fishAudioStarredOnly by rememberSaveable { mutableStateOf(false) }
+    var offlineStarredOnly by rememberSaveable { mutableStateOf(false) }
+    var starredVoicesExpanded by rememberSaveable { mutableStateOf(true) }
     var offlineVoicesExpanded by rememberSaveable { mutableStateOf(false) }
     var azureVoicesExpanded by rememberSaveable { mutableStateOf(false) }
     var elevenLabsVoicesExpanded by rememberSaveable { mutableStateOf(false) }
     var activePreviewPath by remember { mutableStateOf<String?>(null) }
-    DisposableEffect(previewPath) {
+    // The token lets a cached sample replay even when its path is unchanged.
+    DisposableEffect(previewPath, previewToken) {
         val player = previewPath?.let { path ->
             runCatching {
                 MediaPlayer().apply {
@@ -1314,7 +1339,7 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
     val azureLocaleOptions = listOf("English · all accents", "All languages") + azureLocales
     val azureGenderOptions = listOf("Any gender") + azureVoices.mapNotNull { it.gender }.distinct().sorted()
     val azureStyleOptions = listOf("Any style") + azureStyles
-    val filteredVoices = remember(azureVoices, voiceFilter, azureLocaleFilter, azureGenderFilter, azureQualityFilter, azureStyleFilter) {
+    val filteredVoices = remember(azureVoices, voiceFilter, azureLocaleFilter, azureGenderFilter, azureQualityFilter, azureStyleFilter, starredVoices, azureStarredOnly) {
         azureVoices.filter { voice ->
             val localeText = voice.localeName?.let { "$it (${voice.locale})" } ?: voice.locale
             val matchesSearch = voiceFilter.isBlank() || listOf(voice.name, voice.id, voice.locale, voice.localeName.orEmpty(), voice.gender.orEmpty(), voice.styles.joinToString(" "))
@@ -1327,7 +1352,8 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
             val matchesGender = azureGenderFilter == "Any gender" || voice.gender.equals(azureGenderFilter, true)
             val matchesQuality = azureQualityFilter == "Any quality" || voice.azureQualityCategory() == azureQualityFilter
             val matchesStyle = azureStyleFilter == "Any style" || voice.styles.any { it.equals(azureStyleFilter, true) }
-            matchesSearch && matchesLocale && matchesGender && matchesQuality && matchesStyle
+            val matchesStar = !azureStarredOnly || starredVoiceKey("azure", voice.id) in starredVoices
+            matchesSearch && matchesLocale && matchesGender && matchesQuality && matchesStyle && matchesStar
         }
     }
     val elevenAccentOptions = listOf("Any accent") + elevenLabsVoices.mapNotNull { it.accent }.distinct().sorted()
@@ -1337,7 +1363,7 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
     val elevenAgeOptions = listOf("Any age") + elevenLabsVoices.mapNotNull { it.age }.distinct().sorted()
     val elevenTypeOptions = listOf("Any voice type") + elevenLabsVoices.mapNotNull { it.voiceType }.distinct().sorted()
     val elevenStyleOptions = listOf("Any style") + elevenLabsVoices.flatMap { it.styles }.distinct().sorted()
-    val filteredElevenLabsVoices = remember(elevenLabsVoices, elevenLabsVoiceFilter, elevenAccentFilter, elevenLocaleFilter, elevenGenderFilter, elevenAgeFilter, elevenTypeFilter, elevenStyleFilter) {
+    val filteredElevenLabsVoices = remember(elevenLabsVoices, elevenLabsVoiceFilter, elevenAccentFilter, elevenLocaleFilter, elevenGenderFilter, elevenAgeFilter, elevenTypeFilter, elevenStyleFilter, starredVoices, elevenLabsStarredOnly) {
         elevenLabsVoices.filter { voice ->
             val localeText = voice.localeName?.let { "$it (${voice.locale})" } ?: voice.locale
             val searchMatches = elevenLabsVoiceFilter.isBlank() || listOf(voice.name, voice.id, voice.locale, localeText,
@@ -1352,17 +1378,32 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                 (elevenGenderFilter == "Any gender" || voice.gender.equals(elevenGenderFilter, true)) &&
                 (elevenAgeFilter == "Any age" || voice.age.equals(elevenAgeFilter, true)) &&
                 (elevenTypeFilter == "Any voice type" || voice.voiceType.equals(elevenTypeFilter, true)) &&
-                (elevenStyleFilter == "Any style" || voice.styles.any { it.equals(elevenStyleFilter, true) })
+                (elevenStyleFilter == "Any style" || voice.styles.any { it.equals(elevenStyleFilter, true) }) &&
+                (!elevenLabsStarredOnly || starredVoiceKey("elevenlabs", voice.id) in starredVoices)
         }
     }
+    val filteredFishAudioVoices = remember(fishAudioVoices, fishAudioVoiceFilter, starredVoices, fishAudioStarredOnly) {
+        fishAudioVoices.filter { voice ->
+            fishAudioVoiceFilter.isBlank() || listOf(voice.name, voice.id, voice.locale, voice.description.orEmpty(),
+                voice.gender.orEmpty(), voice.accent.orEmpty(), voice.voiceType.orEmpty(), voice.styles.joinToString(" "))
+            .any { it.contains(fishAudioVoiceFilter, true) }
+        }.filter { voice -> !fishAudioStarredOnly || starredVoiceKey("fish-audio", voice.id) in starredVoices }
+    }
+    val filteredKokoroVoices = remember(starredVoices, offlineStarredOnly) {
+        kokoroVoices.filter { voice -> !offlineStarredOnly || starredVoiceKey("kokoro", voice.id.toString()) in starredVoices }
+    }
     val previewFileName = activePreviewPath?.substringAfterLast('/')
-    val activeOfflinePreviewId = previewFileName?.takeIf { it.startsWith("kokoro-") }
-        ?.removePrefix("kokoro-")?.substringBefore('-')?.toIntOrNull()
+    // Cached samples use a stable per-voice name, so the playing sample is matched exactly.
+    val activeOfflinePreviewId = previewFileName?.takeIf { it.startsWith("${VoicePreviewCache.KOKORO}-") }
+        ?.removePrefix("${VoicePreviewCache.KOKORO}-")?.substringBefore('.')?.toIntOrNull()
     val activeAzurePreviewId = azureVoices.firstOrNull { voice ->
-        previewFileName?.startsWith("${voice.id.replace(Regex("[^A-Za-z0-9_-]"), "_")}-") == true
+        previewFileName == VoicePreviewCache.fileName(VoicePreviewCache.AZURE, voice.id, VoicePreviewCache.AZURE_EXTENSION)
     }?.id
     val activeElevenLabsPreviewId = elevenLabsVoices.firstOrNull { voice ->
-        previewFileName?.startsWith("eleven-${voice.id.replace(Regex("[^A-Za-z0-9_-]"), "_")}-") == true
+        previewFileName == VoicePreviewCache.fileName(VoicePreviewCache.ELEVENLABS, voice.id, VoicePreviewCache.ELEVENLABS_EXTENSION)
+    }?.id
+    val activeFishAudioPreviewId = fishAudioVoices.firstOrNull { voice ->
+        previewFileName == VoicePreviewCache.fileName(VoicePreviewCache.FISH_AUDIO, voice.id, VoicePreviewCache.FISH_AUDIO_EXTENSION)
     }?.id
     val selectedOfflineVoiceName = kokoroVoices.firstOrNull { it.id == selectedOfflineVoice }
         ?.let { "${it.name} · ${it.accent}" } ?: "Voice ${selectedOfflineVoice + 1}"
@@ -1380,11 +1421,97 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
     } ?: selectedElevenLabsVoice.takeIf(String::isNotBlank)?.let { voiceId ->
         listOfNotNull(voiceId, selectedElevenLabsModel).joinToString(" · ")
     } ?: "Not selected"
+    val selectedFishAudioVoiceInfo = fishAudioVoices.firstOrNull { it.id == selectedFishAudioVoice }
+    val selectedFishAudioVoiceName = selectedFishAudioVoiceInfo?.let { voice ->
+        listOfNotNull(voice.name, voice.description).distinct().joinToString(" · ")
+    } ?: selectedFishAudioVoice.takeIf(String::isNotBlank) ?: "Not selected"
+    // The collapsed summary stays scannable by naming each voice without its description.
+    val selectedAzureVoiceShortName = selectedAzureVoiceInfo?.name
+        ?: selectedAzureVoice.takeIf(String::isNotBlank) ?: "Not selected"
+    val selectedElevenLabsVoiceShortName = selectedElevenLabsVoiceInfo?.name
+        ?: selectedElevenLabsVoice.takeIf(String::isNotBlank) ?: "Not selected"
+    val selectedFishAudioVoiceShortName = selectedFishAudioVoiceInfo?.name
+        ?: selectedFishAudioVoice.takeIf(String::isNotBlank) ?: "Not selected"
+    val selectedOfflineVoiceShortName = kokoroVoices.firstOrNull { it.id == selectedOfflineVoice }?.name
+        ?: "Voice ${selectedOfflineVoice + 1}"
+    /** Every starred voice from every provider, so favourites stay findable in one place. */
+    val starredVoiceEntries = remember(starredVoices, azureVoices, elevenLabsVoices, fishAudioVoices) {
+        buildList {
+            azureVoices.forEach { voice ->
+                if (starredVoiceKey("azure", voice.id) in starredVoices)
+                    add(StarredVoiceEntry("azure", "Azure Speech", voice.id, voice.name, voice.azureDescription()))
+            }
+            elevenLabsVoices.forEach { voice ->
+                if (starredVoiceKey("elevenlabs", voice.id) in starredVoices)
+                    add(StarredVoiceEntry("elevenlabs", "ElevenLabs", voice.id, voice.name, voice.displayDescription("ElevenLabs")))
+            }
+            fishAudioVoices.forEach { voice ->
+                if (starredVoiceKey("fish-audio", voice.id) in starredVoices)
+                    add(StarredVoiceEntry("fish-audio", "Fish Audio", voice.id, voice.name, voice.displayDescription("Fish Audio")))
+            }
+            kokoroVoices.forEach { voice ->
+                if (starredVoiceKey("kokoro", voice.id.toString()) in starredVoices)
+                    add(StarredVoiceEntry("kokoro", "Kokoro offline", voice.id.toString(), voice.name, "${voice.accent} · ${voice.gender} · offline"))
+            }
+        }
+    }
+    /** True when the starred entry is the sample currently playing. */
+    fun isStarredPlaying(entry: StarredVoiceEntry): Boolean = when (entry.provider) {
+        "azure" -> activeAzurePreviewId == entry.voiceId
+        "elevenlabs" -> activeElevenLabsPreviewId == entry.voiceId
+        "fish-audio" -> activeFishAudioPreviewId == entry.voiceId
+        "kokoro" -> activeOfflinePreviewId == entry.voiceId.toIntOrNull()
+        else -> false
+    }
+
+    /** True when this starred voice is the one currently chosen for its provider. */
+    fun isStarredSelected(entry: StarredVoiceEntry): Boolean = when (entry.provider) {
+        "azure" -> selectedAzureVoice == entry.voiceId
+        "elevenlabs" -> selectedElevenLabsVoice == entry.voiceId
+        "fish-audio" -> selectedFishAudioVoice == entry.voiceId
+        "kokoro" -> selectedOfflineVoice == entry.voiceId.toIntOrNull()
+        else -> false
+    }
+
+    /**
+     * Selects a starred voice for its provider. An online voice also becomes
+     * the primary provider, otherwise the choice would not take effect for
+     * playback until the user changed the provider separately.
+     */
+    fun selectStarredVoice(entry: StarredVoiceEntry) {
+        when (entry.provider) {
+            "azure" -> { selectAzureVoice(entry.voiceId); setOnlineProvider("azure") }
+            "elevenlabs" -> { selectElevenLabsVoice(entry.voiceId); setOnlineProvider("elevenlabs") }
+            "fish-audio" -> { selectFishAudioVoice(entry.voiceId); setOnlineProvider("fish-audio") }
+            "kokoro" -> entry.voiceId.toIntOrNull()?.let { selectOfflineVoice(it) }
+        }
+    }
+
+    /** Plays a starred sample through the provider that owns it. */
+    fun auditionStarredVoice(entry: StarredVoiceEntry) {
+        when (entry.provider) {
+            "azure" -> auditionVoice(entry.voiceId)
+            "elevenlabs" -> auditionElevenLabsVoice(entry.voiceId)
+            "fish-audio" -> auditionFishAudioVoice(entry.voiceId)
+            "kokoro" -> entry.voiceId.toIntOrNull()?.let { auditionOfflineVoice(it) }
+        }
+    }
+
     val voicesSectionSummary = buildList {
-        add("Mode · ${if (offlineOnly) "Offline only" else "Online primary · ${if (onlineProvider == "azure") "Azure Speech" else "ElevenLabs"}"}")
-        add("Azure · $selectedAzureVoiceName")
-        add("ElevenLabs · $selectedElevenLabsVoiceName")
-        add("Offline · Kokoro · $selectedOfflineVoiceName")
+        add("Mode · ${if (offlineOnly) "Offline only" else "Online primary · ${if (onlineProvider == "azure") "Azure Speech" else if (onlineProvider == "elevenlabs") "ElevenLabs" else "Fish Audio"}"}")
+        // Collapsed shows names only; expanded keeps the provider detail beside them.
+        if (voicesExpanded) {
+            add("Azure · $selectedAzureVoiceName")
+            add("ElevenLabs · $selectedElevenLabsVoiceName")
+            add("Fish Audio · $selectedFishAudioVoiceName")
+            add("Offline · Kokoro · $selectedOfflineVoiceName")
+        } else {
+            add("Azure · $selectedAzureVoiceShortName")
+            add("ElevenLabs · $selectedElevenLabsVoiceShortName")
+            add("Fish Audio · $selectedFishAudioVoiceShortName")
+            add("Offline · Kokoro · $selectedOfflineVoiceShortName")
+        }
+        if (starredVoices.isNotEmpty()) add("Starred · ${starredVoices.size}")
     }.joinToString("\n")
     LazyColumn(modifier.fillMaxSize().testTag("settings-list"), contentPadding = androidx.compose.foundation.layout.PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { mobileTools()
@@ -1522,6 +1649,46 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                         RadioButton(selected = onlineProvider == "elevenlabs", onClick = { setOnlineProvider("elevenlabs") })
                         Text("ElevenLabs", style = MaterialTheme.typography.bodyLarge)
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = onlineProvider == "fish-audio", onClick = { setOnlineProvider("fish-audio") })
+                        Text("Fish Audio", style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+            item {
+                CollapsibleGroupHeading("Starred voices",
+                    if (starredVoiceEntries.isEmpty()) "No starred voices yet" else "${starredVoiceEntries.size} starred · tap a star to remove it",
+                    starredVoicesExpanded) { starredVoicesExpanded = !starredVoicesExpanded }
+            }
+            if (starredVoicesExpanded && starredVoiceEntries.isEmpty()) {
+                item {
+                    Text("Star a voice in any provider's list to keep your preferred voices together here.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            // The "starred-" prefix keeps these keys distinct from the per-provider
+            // voice lists, which share this LazyColumn.
+            if (starredVoicesExpanded) items(starredVoiceEntries, key = { "starred-${it.provider}-${it.voiceId}" }) { entry ->
+                val playing = isStarredPlaying(entry)
+                val selected = isStarredSelected(entry)
+                Card(modifier = Modifier.frostedGlass(), colors = frostedCardColors()) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(entry.voiceName, style = MaterialTheme.typography.titleSmall)
+                            Text("${entry.providerName} · ${entry.voiceDescription}",
+                                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (playing) Text("Playing sample", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            if (selected) Text("Selected voice", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        }
+                        TextButton(onClick = { selectStarredVoice(entry) }) { Text(if (selected) "Selected" else "Select") }
+                        VoiceStarButton(true, entry.voiceName) { toggleStarred(entry.provider, entry.voiceId) }
+                        IconButton(enabled = !offlineOnly || entry.provider == "kokoro",
+                            onClick = { if (playing) stopVoicePreview() else auditionStarredVoice(entry) }) {
+                            Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (playing) "Stop ${entry.voiceName} sample" else "Preview ${entry.voiceName}")
+                        }
+                    }
                 }
             }
             item {
@@ -1568,7 +1735,16 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                 val selectedVoice = kokoroVoices.firstOrNull { it.id == selectedOfflineVoice }
                 VoiceListToggle("Offline voices", "${selectedVoice?.name ?: "Choose a voice"} · ${kokoroVoices.size} voices", offlineVoicesExpanded) { offlineVoicesExpanded = !offlineVoicesExpanded }
             }
-            if (offlineVoiceReady && offlineVoicesExpanded) items(kokoroVoices, key = { "kokoro-${it.id}" }) { voice ->
+            if (offlineVoiceReady && offlineVoicesExpanded) item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(selected = offlineStarredOnly, onClick = { offlineStarredOnly = !offlineStarredOnly },
+                        label = { Text("Starred only") },
+                        leadingIcon = { Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(18.dp)) })
+                    Text(if (offlineStarredOnly) "Showing starred Kokoro voices" else "Star voices to keep your preferred ones here.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 10.dp))
+                }
+            }
+            if (offlineVoiceReady && offlineVoicesExpanded) items(filteredKokoroVoices, key = { "kokoro-${it.id}" }) { voice ->
                 Card(modifier = Modifier.frostedGlass(), colors = frostedCardColors()) {
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -1577,6 +1753,9 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                             if (activeOfflinePreviewId == voice.id) Text("Playing sample", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         }
                         TextButton(onClick = { selectOfflineVoice(voice.id); offlineVoicesExpanded = false }) { Text(if (selectedOfflineVoice == voice.id) "Selected" else "Select") }
+                        VoiceStarButton(starredVoiceKey("kokoro", voice.id.toString()) in starredVoices, voice.name) {
+                            toggleStarred("kokoro", voice.id.toString())
+                        }
                         IconButton(onClick = { if (activeOfflinePreviewId == voice.id) stopVoicePreview() else auditionOfflineVoice(voice.id) }) {
                             Icon(if (activeOfflinePreviewId == voice.id) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (activeOfflinePreviewId == voice.id) "Stop ${voice.name} sample" else "Preview ${voice.name}")
@@ -1618,6 +1797,13 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                         VoiceFilterDropdown("Quality", azureQualityFilter, azureQualities, { azureQualityFilter = it }, Modifier.weight(1f))
                         VoiceFilterDropdown("Speaking style", azureStyleFilter, azureStyleOptions, { azureStyleFilter = it }, Modifier.weight(1f))
                     }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        FilterChip(selected = azureStarredOnly, onClick = { azureStarredOnly = !azureStarredOnly },
+                            label = { Text("Starred only") },
+                            leadingIcon = { Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(18.dp)) })
+                        Text(if (azureStarredOnly) "Showing starred Azure voices" else "Star voices to keep your preferred ones here.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 10.dp))
+                    }
                     Text("${filteredVoices.size} voices · Neural HD identifies Azure's HD voice family; available styles vary by voice.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -1631,6 +1817,9 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                             if (activeAzurePreviewId == voice.id) Text("Playing sample", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         }
                         TextButton(onClick = { selectAzureVoice(voice.id) }) { Text(if (selectedAzureVoice == voice.id) "Selected" else "Select") }
+                        VoiceStarButton(starredVoiceKey("azure", voice.id) in starredVoices, voice.name) {
+                            toggleStarred("azure", voice.id)
+                        }
                         IconButton(enabled = !offlineOnly, onClick = { if (activeAzurePreviewId == voice.id) stopVoicePreview() else auditionVoice(voice.id) }) {
                             Icon(if (activeAzurePreviewId == voice.id) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (activeAzurePreviewId == voice.id) "Stop ${voice.name} sample" else "Preview ${voice.name}")
@@ -1707,6 +1896,13 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                         VoiceFilterDropdown("Voice type", elevenTypeFilter, elevenTypeOptions, { elevenTypeFilter = it }, Modifier.weight(1f))
                         VoiceFilterDropdown("Use case", elevenStyleFilter, elevenStyleOptions, { elevenStyleFilter = it }, Modifier.weight(1f))
                     }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        FilterChip(selected = elevenLabsStarredOnly, onClick = { elevenLabsStarredOnly = !elevenLabsStarredOnly },
+                            label = { Text("Starred only") },
+                            leadingIcon = { Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(18.dp)) })
+                        Text(if (elevenLabsStarredOnly) "Showing starred ElevenLabs voices" else "Star voices to keep your preferred ones here.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 10.dp))
+                    }
                     Text("${filteredElevenLabsVoices.size} voices · filters use the labels ElevenLabs provides for your account.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -1727,10 +1923,86 @@ private fun SettingsScreen(themeMode: String, setThemeMode: (String) -> Unit, se
                             if (activeElevenLabsPreviewId == voice.id) Text("Playing sample", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         }
                         TextButton(enabled = tierAllowed, onClick = { selectElevenLabsVoice(voice.id) }) { Text(if (selectedElevenLabsVoice == voice.id) "Selected" else "Select") }
+                        VoiceStarButton(starredVoiceKey("elevenlabs", voice.id) in starredVoices, voice.name) {
+                            toggleStarred("elevenlabs", voice.id)
+                        }
                         IconButton(enabled = !offlineOnly && (voice.previewUrl != null || activeElevenLabsPreviewId == voice.id),
                             onClick = { if (activeElevenLabsPreviewId == voice.id) stopVoicePreview() else auditionElevenLabsVoice(voice.id) }) {
                             Icon(if (activeElevenLabsPreviewId == voice.id) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (activeElevenLabsPreviewId == voice.id) "Stop ${voice.name} sample" else "Preview ${voice.name}")
+                        }
+                    }
+                }
+            }
+            item { SettingsGroupHeading("Fish Audio · free online fallback") }
+            item {
+                Text(
+                    "Fish Audio provides licensed public English voices using its free S2.1 Pro developer model. No per-voice opt-in or paid plan is required; usage is covered by Fish Audio's free allowance.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(if (fishAudioKeySaved) "API key saved securely" else "No API key saved", style = MaterialTheme.typography.labelMedium, color = if (fishAudioKeySaved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(
+                        value = fishAudioKey,
+                        onValueChange = { fishAudioKey = it },
+                        singleLine = true,
+                        visualTransformation = StarPasswordVisualTransformation,
+                        label = if (fishAudioKeySaved && fishAudioKey.isEmpty()) null else ({ Text("Fish Audio API key") }),
+                        placeholder = { Text(if (fishAudioKeySaved && fishAudioKey.isEmpty()) "*****" else "Paste your key") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Button(enabled = fishAudioKey.isNotBlank(), onClick = { saveFishAudioKey(fishAudioKey); fishAudioKey = "" }) {
+                            Text(if (fishAudioKeySaved) "Replace key" else "Save key")
+                        }
+                        if (fishAudioKeySaved) OutlinedButton(onClick = clearFishAudioKey, colors = ButtonDefaults.outlinedButtonColors(containerColor = frostedSurfaceColor())) { Text("Remove key") }
+                    }
+                    if (fishAudioKeySaved) OutlinedButton(onClick = loadFishAudioCatalog) { Text("Load licensed voices") }
+                }
+            }
+            if (fishAudioVoices.isNotEmpty()) item {
+                val selectedVoice = fishAudioVoices.firstOrNull { it.id == selectedFishAudioVoice }
+                VoiceListToggle("Fish Audio voices", "${selectedVoice?.name ?: "Choose a voice"} · ${fishAudioVoices.size} available", fishAudioVoicesExpanded) { fishAudioVoicesExpanded = !fishAudioVoicesExpanded }
+            }
+            if (fishAudioVoices.isNotEmpty() && fishAudioVoicesExpanded) item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = fishAudioVoiceFilter,
+                        onValueChange = { fishAudioVoiceFilter = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Search voices") },
+                        placeholder = { Text("Name, voice ID, or description") },
+                    )
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        FilterChip(selected = fishAudioStarredOnly, onClick = { fishAudioStarredOnly = !fishAudioStarredOnly },
+                            label = { Text("Starred only") },
+                            leadingIcon = { Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(18.dp)) })
+                        Text(if (fishAudioStarredOnly) "Showing starred Fish Audio voices" else "Star voices to keep your preferred ones here.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 10.dp))
+                    }
+                    Text("${filteredFishAudioVoices.size} voices · licensed public English voices from Fish Audio's catalog.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (fishAudioVoicesExpanded) items(filteredFishAudioVoices, key = { "fish-${it.id}" }) { voice ->
+                Card(modifier = Modifier.frostedGlass(), colors = frostedCardColors()) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(voice.name, style = MaterialTheme.typography.titleSmall)
+                            Text(voice.displayDescription("Fish Audio"), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (activeFishAudioPreviewId == voice.id) Text("Playing sample", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        }
+                        TextButton(onClick = { selectFishAudioVoice(voice.id) }) { Text(if (selectedFishAudioVoice == voice.id) "Selected" else "Select") }
+                        VoiceStarButton(starredVoiceKey("fish-audio", voice.id) in starredVoices, voice.name) {
+                            toggleStarred("fish-audio", voice.id)
+                        }
+                        IconButton(enabled = !offlineOnly,
+                            onClick = { if (activeFishAudioPreviewId == voice.id) stopVoicePreview() else auditionFishAudioVoice(voice.id) }) {
+                            Icon(if (activeFishAudioPreviewId == voice.id) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (activeFishAudioPreviewId == voice.id) "Stop ${voice.name} sample" else "Preview ${voice.name}")
                         }
                     }
                 }
@@ -1911,6 +2183,25 @@ private fun SettingsGroupHeading(title: String) {
     }
 }
 
+/** Group heading that also collapses its section, for lists that can grow long. */
+@Composable
+private fun CollapsibleGroupHeading(title: String, summary: String, expanded: Boolean, onClick: () -> Unit) {
+    Surface(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
+        color = frostedSurfaceColor(), contentColor = MaterialTheme.colorScheme.onSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = .28f)),
+        tonalElevation = 0.dp, shadowElevation = 0.dp) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text(summary, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (expanded) "Collapse $title" else "Expand $title", tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
 @Composable
 private fun AccentSpectrumPicker(hex: String, selectedAccent: Int, setHex: (String) -> Unit) {
     val baseColor = remember(hex, selectedAccent) {
@@ -1981,6 +2272,18 @@ private fun VoiceListToggle(title: String, summary: String, expanded: Boolean, o
                 tint = MaterialTheme.colorScheme.primary,
             )
         }
+    }
+}
+
+/** Star toggle shared by every provider so a favourite looks the same wherever it was saved. */
+@Composable
+private fun VoiceStarButton(starred: Boolean, voiceName: String, onToggle: () -> Unit) {
+    IconButton(onClick = onToggle) {
+        Icon(
+            if (starred) Icons.Default.Star else Icons.Default.StarBorder,
+            contentDescription = if (starred) "Remove $voiceName from starred voices" else "Star $voiceName",
+            tint = if (starred) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -2251,6 +2554,15 @@ private fun menuSurfaceColor(): Color = MaterialTheme.colorScheme.surfaceContain
 
 @Composable
 private fun frostedDialogContainerColor(): Color = MaterialTheme.colorScheme.surface.copy(alpha = .94f)
+
+/** A starred voice together with the provider it came from. */
+private data class StarredVoiceEntry(
+    val provider: String,
+    val providerName: String,
+    val voiceId: String,
+    val voiceName: String,
+    val voiceDescription: String,
+)
 
 private fun dev.yomu.app.speech.SpeechVoice.displayDescription(provider: String): String {
     description?.trim()?.takeIf(String::isNotEmpty)?.let { return it }

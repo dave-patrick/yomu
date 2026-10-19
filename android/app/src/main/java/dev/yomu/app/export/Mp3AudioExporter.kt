@@ -7,6 +7,8 @@ import dev.yomu.app.speech.AzureCredentialVault
 import dev.yomu.app.speech.AzureRestSpeechProvider
 import dev.yomu.app.speech.ElevenLabsCredentialVault
 import dev.yomu.app.speech.ElevenLabsRestSpeechProvider
+import dev.yomu.app.speech.FishAudioCredentialVault
+import dev.yomu.app.speech.FishAudioRestSpeechProvider
 import dev.yomu.app.speech.KokoroModelInstaller
 import dev.yomu.app.speech.SherpaKokoroEspeakProvider
 import dev.yomu.app.speech.SpeechSynthesisRequest
@@ -22,6 +24,7 @@ import java.util.Locale
 internal class Mp3AudioExporter(private val context: Context) {
     private val vault = AzureCredentialVault(context)
     private val elevenLabsVault = ElevenLabsCredentialVault(context)
+    private val fishAudioVault = FishAudioCredentialVault(context)
     private val installer = KokoroModelInstaller(context)
 
     suspend fun export(item: ReadingItemEntity, destination: Uri, progress: (String) -> Unit) = withContext(Dispatchers.IO) {
@@ -114,7 +117,14 @@ internal class Mp3AudioExporter(private val context: Context) {
 
     private fun synthesizeOnline(text: String, output: File, prefs: android.content.SharedPreferences): Boolean {
         val primary = prefs.getString("online_provider", "azure") ?: "azure"
-        val providers = if (prefs.getBoolean("online_fallback_enabled", true)) listOf(primary, if (primary == "azure") "elevenlabs" else "azure") else listOf(primary)
+        val providers = if (prefs.getBoolean("online_fallback_enabled", true)) {
+            val alternate = when (primary) {
+                "azure" -> "elevenlabs"
+                "elevenlabs" -> "azure"
+                else -> "azure"
+            }
+            (listOf(primary, alternate) + listOf("fish-audio").filter { it != primary }).toList()
+        } else listOf(primary)
         for (providerId in providers) {
             val succeeded = when (providerId) {
                 "azure" -> vault.credentials()?.let { credentials -> runCatching {
@@ -127,6 +137,13 @@ internal class Mp3AudioExporter(private val context: Context) {
                     val voice = prefs.getString("elevenlabs_voice", "").orEmpty()
                     if (mayUse && tier.isNotBlank() && key != null && voice.isNotBlank()) runCatching {
                         ElevenLabsRestSpeechProvider(key).synthesize(SpeechSynthesisRequest(text, voice, output))
+                    }.isSuccess else false
+                }
+                "fish-audio" -> {
+                    val key = fishAudioVault.key()
+                    val voice = prefs.getString("fish_audio_voice", "").orEmpty()
+                    if (key != null && voice.isNotBlank()) runCatching {
+                        FishAudioRestSpeechProvider(key).synthesize(SpeechSynthesisRequest(text, voice, output))
                     }.isSuccess else false
                 }
                 else -> false

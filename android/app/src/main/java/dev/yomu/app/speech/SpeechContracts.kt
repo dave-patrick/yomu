@@ -45,6 +45,12 @@ data class SpeechVoice(
 
 class SpeechCredentials(internal val key: String, val region: String)
 
+/**
+ * Starred voices are provider-scoped so an identical id published by two
+ * different providers never collapses into one starred entry.
+ */
+internal fun starredVoiceKey(provider: String, voiceId: String): String = "$provider:$voiceId"
+
 data class SpeechSynthesisRequest(
     val text: String,
     val voiceId: String,

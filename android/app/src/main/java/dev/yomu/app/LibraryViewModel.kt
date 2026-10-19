@@ -26,6 +26,8 @@ import dev.yomu.app.speech.FishAudioRestSpeechProvider
 import dev.yomu.app.speech.SpeechSynthesisRequest
 import dev.yomu.app.speech.SpeechVoice
 import dev.yomu.app.speech.SherpaKokoroEspeakProvider
+import dev.yomu.app.speech.VoicePreviewCache
+import dev.yomu.app.speech.starredVoiceKey
 import dev.yomu.app.playback.YomuPlaybackService
 import dev.yomu.app.playback.PlaybackEvents
 import dev.yomu.app.export.Mp3AudioExporter
@@ -54,8 +56,18 @@ import kotlin.coroutines.coroutineContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * A preview request carries a token so replaying the same cached sample again
+ * is still observed as a new request by the player.
+ */
+data class VoicePreviewRequest(val path: String, val token: Long)
+
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as YomuApplication
+    init {
+        // Removing leftover samples touches the file system, so it must not run on the main thread.
+        viewModelScope.launch(Dispatchers.IO) { VoicePreviewCache.clearLegacySamples(application.cacheDir) }
+    }
     private val repository = LibraryRepository(app.database)
     private val importer = ContentImporter(application, repository.dao)
     private val kokoroInstaller = KokoroModelInstaller(application)
@@ -97,8 +109,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val fishAudioKeySaved: StateFlow<Boolean> = _fishAudioKeySaved.asStateFlow()
     private val _fishAudioVoices = MutableStateFlow(readCachedVoices("fish_voice_catalog"))
     val fishAudioVoices: StateFlow<List<SpeechVoice>> = _fishAudioVoices.asStateFlow()
-    private val _previewPath = MutableStateFlow<String?>(null)
-    val previewPath: StateFlow<String?> = _previewPath.asStateFlow()
+    private val _starredVoices = MutableStateFlow(readStarredVoices())
+    val starredVoices: StateFlow<Set<String>> = _starredVoices.asStateFlow()
+    private val _preview = MutableStateFlow<VoicePreviewRequest?>(null)
+    val preview: StateFlow<VoicePreviewRequest?> = _preview.asStateFlow()
+    private var previewToken = 0L
     private val selectedPlaylistId = MutableStateFlow<String?>(null)
     val playlistItems: StateFlow<List<ReadingListRow>> = selectedPlaylistId.flatMapLatest { id ->
         if (id == null) flowOf(emptyList()) else repository.dao.observePlaylistRows(id)
@@ -149,6 +164,21 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             array.put(item)
         }
         speechPreferences.edit().putString(key, array.toString()).apply()
+    }
+
+    /** Starred ids are provider-scoped so identical ids from different providers never collide. */
+    private fun readStarredVoices(): Set<String> =
+        speechPreferences.getStringSet(STARRED_VOICES_KEY, emptySet())?.toSet().orEmpty()
+
+    fun isStarred(provider: String, voiceId: String): Boolean =
+        starredVoiceKey(provider, voiceId) in _starredVoices.value
+
+    fun toggleStarred(provider: String, voiceId: String) {
+        val key = starredVoiceKey(provider, voiceId)
+        val updated = _starredVoices.value.toMutableSet()
+        if (!updated.add(key)) updated.remove(key)
+        speechPreferences.edit().putStringSet(STARRED_VOICES_KEY, updated).apply()
+        _starredVoices.value = updated
     }
 
     private val _status = MutableStateFlow<String?>(null)
@@ -525,6 +555,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 if (refreshCredentials) {
                     _azureVoices.value = emptyList()
                     speechPreferences.edit().remove("azure_voice_catalog").apply()
+                    // A different account or region can offer different voices, so old samples no longer apply.
+                    VoicePreviewCache.clearProvider(getApplication<Application>().cacheDir, VoicePreviewCache.AZURE)
                 }
                 _azureKeySaved.value = true
                 _azureRegion.value = azureVault.region()
@@ -545,10 +577,19 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         _azureKeySaved.value = false
         _azureVoices.value = emptyList()
         speechPreferences.edit().remove("azure_voice_catalog").apply()
-        _previewPath.value = null
+        viewModelScope.launch(Dispatchers.IO) {
+            VoicePreviewCache.clearProvider(getApplication<Application>().cacheDir, VoicePreviewCache.AZURE)
+        }
+        _preview.value = null
     }
 
-    fun stopVoicePreview() { _previewPath.value = null }
+    fun stopVoicePreview() { _preview.value = null }
+
+    /** Publishes a sample for playback; the token lets a cached file replay. */
+    private fun publishPreview(file: File) {
+        previewToken += 1
+        _preview.value = VoicePreviewRequest(file.absolutePath, previewToken)
+    }
 
     fun loadAzureVoices() = work("Loading Azure voice catalog…") {
         val credentials = azureVault.credentials() ?: error("Save your Azure Speech key first.")
@@ -559,13 +600,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun auditionAzureVoice(voiceId: String) = work("Preparing voice sample…") {
         val credentials = azureVault.credentials() ?: error("Save your Azure Speech key first.")
-        val file = File(getApplication<Application>().cacheDir, "voice-previews/${voiceId.replace(Regex("[^A-Za-z0-9_-]"), "_")}-${System.currentTimeMillis()}.wav")
-        withContext(Dispatchers.IO) {
-            file.parentFile?.mkdirs()
+        val file = VoicePreviewCache.resolve(getApplication<Application>().cacheDir,
+            VoicePreviewCache.AZURE, voiceId, VoicePreviewCache.AZURE_EXTENSION) { target ->
             AzureRestSpeechProvider(credentials).synthesize(SpeechSynthesisRequest(
-                "Hello. This is a short voice preview in Yomu, a listening library for articles and documents.", voiceId, file))
+                "Hello. This is a short voice preview in Yomu, a listening library for articles and documents.", voiceId, target))
         }
-        _previewPath.value = file.absolutePath
+        publishPreview(file)
     }
 
     fun saveElevenLabsKey(key: String) = work("Saving ElevenLabs key…") {
@@ -575,6 +615,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         _elevenLabsUsage.value = null
         _elevenLabsVoices.value = emptyList()
         speechPreferences.edit().remove("elevenlabs_voice_catalog").apply()
+        // A new account exposes a different catalogue, so cached samples are discarded.
+        VoicePreviewCache.clearProvider(getApplication<Application>().cacheDir, VoicePreviewCache.ELEVENLABS)
         _status.value = "ElevenLabs key saved securely. Check the account tier before enabling it."
     }
 
@@ -585,6 +627,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         _elevenLabsUsage.value = null
         _elevenLabsVoices.value = emptyList()
         speechPreferences.edit().remove("elevenlabs_voice_catalog").apply()
+        viewModelScope.launch(Dispatchers.IO) {
+            VoicePreviewCache.clearProvider(getApplication<Application>().cacheDir, VoicePreviewCache.ELEVENLABS)
+        }
     }
 
     fun loadElevenLabsCatalog() = work("Checking ElevenLabs account and loading voices…") {
@@ -608,12 +653,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun auditionElevenLabsVoice(voiceId: String) = work("Loading provider voice sample…") {
         val key = withContext(Dispatchers.IO) { elevenLabsVault.key() } ?: error("Save your ElevenLabs API key first.")
         val voice = _elevenLabsVoices.value.firstOrNull { it.id == voiceId } ?: error("Reload the ElevenLabs voice list first.")
-        val file = File(getApplication<Application>().cacheDir, "voice-previews/eleven-${voiceId.replace(Regex("[^A-Za-z0-9_-]"), "_")}-${System.currentTimeMillis()}.mp3")
-        withContext(Dispatchers.IO) {
-            file.parentFile?.mkdirs()
-            ElevenLabsRestSpeechProvider(key).downloadPreview(voice, file)
+        val file = VoicePreviewCache.resolve(getApplication<Application>().cacheDir,
+            VoicePreviewCache.ELEVENLABS, voiceId, VoicePreviewCache.ELEVENLABS_EXTENSION) { target ->
+            ElevenLabsRestSpeechProvider(key).downloadPreview(voice, target)
         }
-        _previewPath.value = file.absolutePath
+        publishPreview(file)
     }
 
     fun saveFishAudioKey(key: String) = work("Saving Fish Audio key…") {
@@ -621,6 +665,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         _fishAudioKeySaved.value = true
         _fishAudioVoices.value = emptyList()
         speechPreferences.edit().remove("fish_voice_catalog").apply()
+        // A new account can expose a different catalogue, so cached samples are discarded.
+        viewModelScope.launch(Dispatchers.IO) {
+            VoicePreviewCache.clearProvider(getApplication<Application>().cacheDir, VoicePreviewCache.FISH_AUDIO)
+        }
         _status.value = "Fish Audio key saved securely. Yomu uses the free S2.1 Pro model."
     }
 
@@ -629,6 +677,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         _fishAudioKeySaved.value = false
         _fishAudioVoices.value = emptyList()
         speechPreferences.edit().remove("fish_voice_catalog").apply()
+        viewModelScope.launch(Dispatchers.IO) {
+            VoicePreviewCache.clearProvider(getApplication<Application>().cacheDir, VoicePreviewCache.FISH_AUDIO)
+        }
     }
 
     fun loadFishAudioCatalog() = work("Loading licensed Fish Audio voices…") {
@@ -640,25 +691,23 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun auditionFishAudioVoice(voiceId: String) = work("Preparing Fish Audio voice sample…") {
         val key = withContext(Dispatchers.IO) { fishAudioVault.key() } ?: error("Save your Fish Audio API key first.")
-        val file = File(getApplication<Application>().cacheDir, "voice-previews/fish-${voiceId.replace(Regex("[^A-Za-z0-9_-]"), "_")}-${System.currentTimeMillis()}.wav")
-        withContext(Dispatchers.IO) {
-            file.parentFile?.mkdirs()
+        val file = VoicePreviewCache.resolve(getApplication<Application>().cacheDir,
+            VoicePreviewCache.FISH_AUDIO, voiceId, VoicePreviewCache.FISH_AUDIO_EXTENSION) { target ->
             FishAudioRestSpeechProvider(key).synthesize(SpeechSynthesisRequest(
-                "Hello. This is a short voice preview in Yomu, a listening library for articles and documents.", voiceId, file))
+                "Hello. This is a short voice preview in Yomu, a listening library for articles and documents.", voiceId, target))
         }
-        _previewPath.value = file.absolutePath
+        publishPreview(file)
     }
 
     fun auditionOfflineVoice(voiceId: Int) = work("Preparing offline voice sample…") {
         check(kokoroInstaller.isInstalled()) { "Install the offline voice package first." }
-        val file = File(getApplication<Application>().cacheDir, "voice-previews/kokoro-$voiceId-${System.currentTimeMillis()}.wav")
-        withContext(Dispatchers.IO) {
-            file.parentFile?.mkdirs()
+        val file = VoicePreviewCache.resolve(getApplication<Application>().cacheDir,
+            VoicePreviewCache.KOKORO, voiceId.toString(), VoicePreviewCache.KOKORO_EXTENSION) { target ->
             val provider = SherpaKokoroEspeakProvider(kokoroInstaller.modelDirectory, 2)
-            try { provider.generate("Hello. This is a short voice preview in Yomu, a listening library for articles and documents.", voiceId, 1f).save(file) }
+            try { provider.generate("Hello. This is a short voice preview in Yomu, a listening library for articles and documents.", voiceId, 1f).save(target) }
             finally { provider.close() }
         }
-        _previewPath.value = file.absolutePath
+        publishPreview(file)
     }
 
     private fun work(startMessage: String, action: suspend () -> Any?) {
@@ -691,5 +740,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         return rows.orEmpty()
     }
 
-    companion object { private val URL = Regex("https?://[^\\s<>\"']+", RegexOption.IGNORE_CASE) }
+    companion object {
+        private val URL = Regex("https?://[^\\s<>\"']+", RegexOption.IGNORE_CASE)
+        private const val STARRED_VOICES_KEY = "starred_voices"
+    }
 }

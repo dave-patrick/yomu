@@ -31,6 +31,8 @@ import dev.yomu.app.speech.AzureCredentialVault
 import dev.yomu.app.speech.AzureRestSpeechProvider
 import dev.yomu.app.speech.ElevenLabsCredentialVault
 import dev.yomu.app.speech.ElevenLabsRestSpeechProvider
+import dev.yomu.app.speech.FishAudioCredentialVault
+import dev.yomu.app.speech.FishAudioRestSpeechProvider
 import dev.yomu.app.speech.KokoroModelInstaller
 import dev.yomu.app.speech.SherpaKokoroEspeakProvider
 import dev.yomu.app.speech.SpeechSynthesisRequest
@@ -59,6 +61,7 @@ class YomuPlaybackService : MediaLibraryService() {
     private val repository by lazy { LibraryRepository((application as YomuApplication).database) }
     private val vault by lazy { AzureCredentialVault(this) }
     private val elevenLabsVault by lazy { ElevenLabsCredentialVault(this) }
+    private val fishAudioVault by lazy { FishAudioCredentialVault(this) }
     private val installer by lazy { KokoroModelInstaller(this) }
     private val kokoroProviderLock = Any()
     private var kokoroProvider: SherpaKokoroEspeakProvider? = null
@@ -73,6 +76,8 @@ class YomuPlaybackService : MediaLibraryService() {
     private var playbackSpeed = 1f
     private var offlineNoticePlayed = false
     private var lastElevenLabsFailure: String? = null
+    private var lastAzureFailure: String? = null
+    private var lastFishAudioFailure: String? = null
     private var sleepTimer: Job? = null
     private var sleepUntil = 0L
     private var stopAtEnd = false
@@ -630,12 +635,28 @@ class YomuPlaybackService : MediaLibraryService() {
         val retryOnlineAtSentenceBoundary = prefs.getBoolean("try_online_after_failover", false)
         if (onlineFirst && (!localOnly || retryOnlineAtSentenceBoundary)) {
             val primary = prefs.getString("online_provider", "azure") ?: "azure"
-            val order = if (prefs.getBoolean("online_fallback_enabled", true)) listOf(primary, if (primary == "azure") "elevenlabs" else "azure") else listOf(primary)
+            val order = if (prefs.getBoolean("online_fallback_enabled", true)) {
+                val alternate = when (primary) {
+                    "azure" -> "elevenlabs"
+                    "elevenlabs" -> "azure"
+                    else -> "azure"
+                }
+                (listOf(primary, alternate) + listOf("fish-audio").filter { it != primary }).toList()
+            } else listOf(primary)
             for (providerId in order) {
                 val succeeded = when (providerId) {
-                    "azure" -> vault.credentials()?.let { credentials -> runCatching {
-                        AzureRestSpeechProvider(credentials, speechHttpClient).synthesize(SpeechSynthesisRequest(text, azureVoice, file))
-                    }.isSuccess } ?: false
+                    "azure" -> vault.credentials()?.let { credentials ->
+                        val attempt = runCatching {
+                            AzureRestSpeechProvider(credentials, speechHttpClient).synthesize(SpeechSynthesisRequest(text, azureVoice, file))
+                        }
+                        attempt.exceptionOrNull()?.message?.let { reason ->
+                            if (reason != lastAzureFailure) {
+                                lastAzureFailure = reason
+                                PlaybackEvents.report("Azure voice failed: $reason")
+                            }
+                        }
+                        attempt.isSuccess
+                    } ?: false
                     "elevenlabs" -> {
                         val tier = prefs.getString("elevenlabs_tier", "").orEmpty()
                         val mayUse = tier.equals("free", true) || tier.startsWith("free_", true) || prefs.getBoolean("allow_paid_elevenlabs", false)
@@ -651,6 +672,22 @@ class YomuPlaybackService : MediaLibraryService() {
                                 if (reason != lastElevenLabsFailure) {
                                     lastElevenLabsFailure = reason
                                     PlaybackEvents.report("ElevenLabs voice failed: $reason")
+                                }
+                            }
+                            attempt.isSuccess
+                        } else false
+                    }
+                    "fish-audio" -> {
+                        val key = fishAudioVault.key()
+                        val voice = prefs.getString("fish_audio_voice", "").orEmpty()
+                        if (key != null && voice.isNotBlank()) {
+                            val attempt = runCatching {
+                                FishAudioRestSpeechProvider(key, speechHttpClient).synthesize(SpeechSynthesisRequest(text, voice, file))
+                            }
+                            attempt.exceptionOrNull()?.message?.let { reason ->
+                                if (reason != lastFishAudioFailure) {
+                                    lastFishAudioFailure = reason
+                                    PlaybackEvents.report("Fish Audio voice failed: $reason")
                                 }
                             }
                             attempt.isSuccess
@@ -887,7 +924,7 @@ class YomuPlaybackService : MediaLibraryService() {
     }
 
     companion object {
-        private val VOICE_PREFERENCE_KEYS = setOf("azure_voice", "elevenlabs_voice", "elevenlabs_model", "kokoro_voice", "online_provider", "online_primary", "online_fallback_enabled", "offline_only", "try_online_after_failover", "allow_paid_elevenlabs")
+        private val VOICE_PREFERENCE_KEYS = setOf("azure_voice", "elevenlabs_voice", "elevenlabs_model", "kokoro_voice", "online_provider", "online_primary", "online_fallback_enabled", "offline_only", "try_online_after_failover", "allow_paid_elevenlabs", "fish_audio_voice")
         private const val CAR_ROOT_ID = "yomu:root"
         private const val CAR_TO_READ_ID = "yomu:to-read"
         private const val CAR_UP_NEXT_ID = "yomu:up-next"

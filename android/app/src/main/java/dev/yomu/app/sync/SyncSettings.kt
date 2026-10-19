@@ -32,6 +32,8 @@ fun SyncSettings() {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val syncState by remember { SyncStatusStore.get(context) }.state.collectAsStateWithLifecycle()
     var actionError by remember { mutableStateOf<String?>(null) }
+    var copied by remember { mutableStateOf(false) }
+    var revealed by remember { mutableStateOf(false) }
     val status = syncState.message
     val working = busy || syncState.inProgress
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -40,6 +42,35 @@ fun SyncSettings() {
         Card(modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(18.dp),colors=frostedCardColors()) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
         if (connected) Text(runCatching { java.net.URI(server).host }.getOrDefault(server), style=MaterialTheme.typography.bodySmall, color=MaterialTheme.colorScheme.onSurfaceVariant)
+        if (connected) {
+            // The same private key pairs browsers and the extension, so it must be
+            // retrievable from the phone without digging through the server host.
+            val clipboard = remember { context.getSystemService(android.content.ClipboardManager::class.java) }
+            OutlinedButton(modifier = Modifier.fillMaxWidth(), enabled = !working, onClick = {
+                vault.token()?.let { token ->
+                    clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Yomu access key", token))
+                    actionError = null
+                    copied = true
+                    scope.launch { kotlinx.coroutines.delay(2500); copied = false }
+                }
+            }) { Text(if (copied) "Access key copied to clipboard" else "Copy access key") }
+            TextButton(modifier = Modifier.fillMaxWidth(), enabled = !working, onClick = { revealed = !revealed }) {
+                Text(if (revealed) "Hide access key" else "Show access key")
+            }
+            if (revealed) {
+                val token = vault.token().orEmpty()
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Private access key") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Text("Use this key to connect a browser or the extension. Anyone holding it can read and change your library.",
+                style=MaterialTheme.typography.bodySmall, color=MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Box {
             OutlinedButton(modifier=Modifier.fillMaxWidth(),enabled=!working,onClick={ directionMenu=true }) {
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) { Text("Direction");Text(direction.label) }
