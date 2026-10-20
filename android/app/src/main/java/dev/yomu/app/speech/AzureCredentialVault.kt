@@ -44,6 +44,24 @@ class AzureCredentialVault(context: Context) {
         }.getOrNull()
     }
 
+    /** Returns the raw decrypted key string, mirroring ElevenLabsCredentialVault.key(). */
+    fun key(): String? {
+        val saved = preferences.getString(ENCRYPTED_KEY, null) ?: return null
+        return runCatching {
+            val encrypted = Base64.decode(saved, Base64.NO_WRAP)
+            require(encrypted.size > IV_BYTES) { "Saved provider key is invalid." }
+            val iv = encrypted.copyOfRange(0, IV_BYTES)
+            val bytes = encrypted.copyOfRange(IV_BYTES, encrypted.size)
+            val cipher = Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, iv)) }
+            val key = String(cipher.doFinal(bytes), Charsets.UTF_8)
+            if (key.isBlank() || !key.all { it.code in 33..126 }) {
+                clear()
+                return null
+            }
+            key
+        }.getOrNull()
+    }
+
     fun clear() { preferences.edit().remove(ENCRYPTED_KEY).remove(REGION).commit() }
 
     private fun secretKey(): SecretKey {

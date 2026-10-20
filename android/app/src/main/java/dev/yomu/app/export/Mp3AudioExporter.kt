@@ -18,7 +18,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.BreakIterator
+import java.time.Duration
 import java.util.Locale
+import okhttp3.OkHttpClient
 
 /** Offline-capable, single-file spoken-word export with roughly five-minute ID3 chapters. */
 internal class Mp3AudioExporter(private val context: Context) {
@@ -26,6 +28,8 @@ internal class Mp3AudioExporter(private val context: Context) {
     private val elevenLabsVault = ElevenLabsCredentialVault(context)
     private val fishAudioVault = FishAudioCredentialVault(context)
     private val installer = KokoroModelInstaller(context)
+    private val speechHttpClient = OkHttpClient.Builder()
+        .callTimeout(Duration.ofSeconds(60)).build()
 
     suspend fun export(item: ReadingItemEntity, destination: Uri, progress: (String) -> Unit) = withContext(Dispatchers.IO) {
         val root = File(context.cacheDir, "exports/${item.id.hashCode()}").apply { mkdirs() }
@@ -128,7 +132,7 @@ internal class Mp3AudioExporter(private val context: Context) {
         for (providerId in providers) {
             val succeeded = when (providerId) {
                 "azure" -> vault.credentials()?.let { credentials -> runCatching {
-                    AzureRestSpeechProvider(credentials).synthesize(SpeechSynthesisRequest(text, prefs.getString("azure_voice", "en-GB-SoniaNeural") ?: "en-GB-SoniaNeural", output))
+                    AzureRestSpeechProvider(credentials, speechHttpClient).synthesize(SpeechSynthesisRequest(text, prefs.getString("azure_voice", "en-GB-SoniaNeural") ?: "en-GB-SoniaNeural", output))
                 }.isSuccess } ?: false
                 "elevenlabs" -> {
                     val tier = prefs.getString("elevenlabs_tier", "").orEmpty()
@@ -136,14 +140,14 @@ internal class Mp3AudioExporter(private val context: Context) {
                     val key = elevenLabsVault.key()
                     val voice = prefs.getString("elevenlabs_voice", "").orEmpty()
                     if (mayUse && tier.isNotBlank() && key != null && voice.isNotBlank()) runCatching {
-                        ElevenLabsRestSpeechProvider(key).synthesize(SpeechSynthesisRequest(text, voice, output))
+                        ElevenLabsRestSpeechProvider(key, speechHttpClient).synthesize(SpeechSynthesisRequest(text, voice, output))
                     }.isSuccess else false
                 }
                 "fish-audio" -> {
                     val key = fishAudioVault.key()
                     val voice = prefs.getString("fish_audio_voice", "").orEmpty()
                     if (key != null && voice.isNotBlank()) runCatching {
-                        FishAudioRestSpeechProvider(key).synthesize(SpeechSynthesisRequest(text, voice, output))
+                        FishAudioRestSpeechProvider(key, speechHttpClient).synthesize(SpeechSynthesisRequest(text, voice, output))
                     }.isSuccess else false
                 }
                 else -> false
